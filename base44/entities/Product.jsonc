@@ -1,0 +1,64 @@
+{
+  "name": "Product",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "title": "Nome do Produto"
+    },
+    "internal_code": {
+      "type": "string",
+      "title": "C\u00f3digo Interno"
+    },
+    "category": {
+      "type": "string",
+      "title": "Categoria"
+    },
+    "calc_type": {
+      "type": "string",
+      "title": "Tipo de C\u00e1lculo Log\u00edstico",
+      "enum": [
+        "unit",
+        "bulk"
+      ],
+      "default": "unit"
+    },
+    "unit_weight_kg": {
+      "type": "number",
+      "title": "Peso Unit\u00e1rio (kg)"
+    },
+    "height_cm": {
+      "type": "number",
+      "title": "Altura (cm)"
+    },
+    "width_cm": {
+      "type": "number",
+      "title": "Largura (cm)"
+    },
+    "length_cm": {
+      "type": "number",
+      "title": "Comprimento (cm)"
+    },
+    "volume_m3": {
+      "type": "number",
+      "title": "Volume (m\u00b3)"
+    },
+    "weight_per_m3": {
+      "type": "number",
+      "title": "Peso por m\u00b3 (kg)"
+    },
+    "sale_unit": {
+      "type": "string",
+      "title": "Unidade de Venda"
+    },
+    "notes": {
+      "type": "string",
+      "title": "Observa\u00e7\u00f5es"
+    }
+  },
+  "required": [
+    "name",
+    "calc_type",
+    "unit_weight_kg"
+  ]
+}

@@ -5,7 +5,24 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
-// Add page imports here
+
+import AppLayout from './components/layout/AppLayout';
+import DriverLayout from './components/layout/DriverLayout';
+import RoleRouter from './pages/RoleRouter';
+import Dashboard from './pages/Dashboard';
+import Orders from './pages/Orders';
+import Products from './pages/Products';
+import Vehicles from './pages/Vehicles';
+import Drivers from './pages/Drivers';
+import Loads from './pages/Loads';
+import RoutesPage from './pages/Routes';
+import Tracking from './pages/Tracking';
+import Reports from './pages/Reports';
+import Settings from './pages/Settings';
+import DriverRoute from './pages/driver/DriverRoute';
+import DriverStops from './pages/driver/DriverStops';
+import DriverMap from './pages/driver/DriverMap';
+import DriverProfile from './pages/driver/DriverProfile';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -33,7 +50,27 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <Routes>
-      {/* Add your page Route elements here */}
+      <Route path="/" element={<RoleRouter />} />
+      {/* Admin/Dispatcher Layout */}
+      <Route element={<AppLayout />}>
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/orders" element={<Orders />} />
+        <Route path="/products" element={<Products />} />
+        <Route path="/vehicles" element={<Vehicles />} />
+        <Route path="/drivers" element={<Drivers />} />
+        <Route path="/loads" element={<Loads />} />
+        <Route path="/routes" element={<RoutesPage />} />
+        <Route path="/tracking" element={<Tracking />} />
+        <Route path="/reports" element={<Reports />} />
+        <Route path="/settings" element={<Settings />} />
+      </Route>
+      {/* Driver Layout */}
+      <Route element={<DriverLayout />}>
+        <Route path="/driver" element={<DriverRoute />} />
+        <Route path="/driver/stops" element={<DriverStops />} />
+        <Route path="/driver/map" element={<DriverMap />} />
+        <Route path="/driver/profile" element={<DriverProfile />} />
+      </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

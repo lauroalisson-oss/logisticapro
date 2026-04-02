@@ -1,0 +1,128 @@
+{
+  "name": "Route",
+  "type": "object",
+  "properties": {
+    "route_number": {
+      "type": "string",
+      "title": "N\u00famero da Rota"
+    },
+    "load_id": {
+      "type": "string",
+      "title": "Carga Vinculada"
+    },
+    "load_number": {
+      "type": "string",
+      "title": "N\u00famero da Carga"
+    },
+    "vehicle_id": {
+      "type": "string",
+      "title": "Ve\u00edculo"
+    },
+    "vehicle_plate": {
+      "type": "string",
+      "title": "Placa do Ve\u00edculo"
+    },
+    "driver_id": {
+      "type": "string",
+      "title": "Motorista"
+    },
+    "driver_name": {
+      "type": "string",
+      "title": "Nome do Motorista"
+    },
+    "driver_email": {
+      "type": "string",
+      "title": "Email do Motorista"
+    },
+    "stops": {
+      "type": "array",
+      "title": "Paradas",
+      "items": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "string"
+          },
+          "order_number": {
+            "type": "string"
+          },
+          "client_name": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "sequence": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "en_route",
+              "delivered",
+              "not_delivered",
+              "issue"
+            ]
+          },
+          "delivery_notes": {
+            "type": "string"
+          },
+          "delivered_at": {
+            "type": "string"
+          },
+          "proof_url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "total_distance_km": {
+      "type": "number",
+      "title": "Dist\u00e2ncia Total (km)"
+    },
+    "estimated_time_min": {
+      "type": "number",
+      "title": "Tempo Estimado (min)"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "planned",
+        "started",
+        "in_progress",
+        "completed",
+        "cancelled"
+      ],
+      "default": "planned"
+    },
+    "started_at": {
+      "type": "string",
+      "title": "Iniciada em"
+    },
+    "completed_at": {
+      "type": "string",
+      "title": "Conclu\u00edda em"
+    },
+    "date": {
+      "type": "string",
+      "title": "Data",
+      "format": "date"
+    },
+    "notes": {
+      "type": "string",
+      "title": "Observa\u00e7\u00f5es"
+    }
+  },
+  "required": [
+    "route_number",
+    "status"
+  ]
+}

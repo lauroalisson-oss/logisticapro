@@ -1,0 +1,98 @@
+{
+  "name": "Load",
+  "type": "object",
+  "properties": {
+    "load_number": {
+      "type": "string",
+      "title": "N\u00famero da Carga"
+    },
+    "vehicle_id": {
+      "type": "string",
+      "title": "Ve\u00edculo"
+    },
+    "vehicle_plate": {
+      "type": "string",
+      "title": "Placa do Ve\u00edculo"
+    },
+    "vehicle_nickname": {
+      "type": "string",
+      "title": "Nome do Ve\u00edculo"
+    },
+    "driver_id": {
+      "type": "string",
+      "title": "Motorista"
+    },
+    "driver_name": {
+      "type": "string",
+      "title": "Nome do Motorista"
+    },
+    "order_ids": {
+      "type": "array",
+      "title": "Pedidos",
+      "items": {
+        "type": "string"
+      }
+    },
+    "total_weight_kg": {
+      "type": "number",
+      "title": "Peso Total (kg)"
+    },
+    "total_volume_m3": {
+      "type": "number",
+      "title": "Volume Total (m\u00b3)"
+    },
+    "total_linear_m": {
+      "type": "number",
+      "title": "Metro Linear Total (m)"
+    },
+    "vehicle_max_weight": {
+      "type": "number",
+      "title": "Capacidade Peso Ve\u00edculo (kg)"
+    },
+    "vehicle_max_volume": {
+      "type": "number",
+      "title": "Capacidade Volume Ve\u00edculo (m\u00b3)"
+    },
+    "vehicle_max_linear": {
+      "type": "number",
+      "title": "Capacidade Linear Ve\u00edculo (m)"
+    },
+    "weight_percent": {
+      "type": "number",
+      "title": "% Ocupa\u00e7\u00e3o Peso"
+    },
+    "volume_percent": {
+      "type": "number",
+      "title": "% Ocupa\u00e7\u00e3o Volume"
+    },
+    "linear_percent": {
+      "type": "number",
+      "title": "% Ocupa\u00e7\u00e3o Linear"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "assembling",
+        "ready",
+        "in_transit",
+        "delivered",
+        "cancelled"
+      ],
+      "default": "assembling"
+    },
+    "date": {
+      "type": "string",
+      "title": "Data",
+      "format": "date"
+    },
+    "notes": {
+      "type": "string",
+      "title": "Observa\u00e7\u00f5es"
+    }
+  },
+  "required": [
+    "load_number",
+    "status"
+  ]
+}

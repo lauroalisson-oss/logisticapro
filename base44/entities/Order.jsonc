@@ -1,0 +1,131 @@
+{
+  "name": "Order",
+  "type": "object",
+  "properties": {
+    "order_number": {
+      "type": "string",
+      "title": "N\u00famero do Pedido"
+    },
+    "client_name": {
+      "type": "string",
+      "title": "Cliente"
+    },
+    "client_phone": {
+      "type": "string",
+      "title": "Telefone"
+    },
+    "address": {
+      "type": "string",
+      "title": "Endere\u00e7o Completo"
+    },
+    "latitude": {
+      "type": "number",
+      "title": "Latitude"
+    },
+    "longitude": {
+      "type": "number",
+      "title": "Longitude"
+    },
+    "delivery_date": {
+      "type": "string",
+      "title": "Data de Entrega",
+      "format": "date"
+    },
+    "delivery_window": {
+      "type": "string",
+      "title": "Janela de Entrega",
+      "enum": [
+        "morning",
+        "afternoon",
+        "evening",
+        "full_day"
+      ]
+    },
+    "priority": {
+      "type": "string",
+      "title": "Prioridade",
+      "enum": [
+        "low",
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "default": "normal"
+    },
+    "items": {
+      "type": "array",
+      "title": "Itens do Pedido",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string"
+          },
+          "product_name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unit_weight_kg": {
+            "type": "number"
+          },
+          "unit_volume_m3": {
+            "type": "number"
+          },
+          "calc_type": {
+            "type": "string"
+          },
+          "total_weight_kg": {
+            "type": "number"
+          },
+          "total_volume_m3": {
+            "type": "number"
+          },
+          "linear_m": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "total_weight_kg": {
+      "type": "number",
+      "title": "Peso Total (kg)"
+    },
+    "total_volume_m3": {
+      "type": "number",
+      "title": "Volume Total (m\u00b3)"
+    },
+    "total_linear_m": {
+      "type": "number",
+      "title": "Metro Linear Total (m)"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "pending",
+        "routing",
+        "in_transit",
+        "delivered",
+        "issue",
+        "cancelled"
+      ],
+      "default": "pending"
+    },
+    "load_id": {
+      "type": "string",
+      "title": "Carga Vinculada"
+    },
+    "notes": {
+      "type": "string",
+      "title": "Observa\u00e7\u00f5es de Entrega"
+    }
+  },
+  "required": [
+    "order_number",
+    "client_name",
+    "address",
+    "status"
+  ]
+}

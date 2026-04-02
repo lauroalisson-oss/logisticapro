@@ -1,0 +1,56 @@
+{
+  "name": "DriverLocation",
+  "type": "object",
+  "properties": {
+    "driver_email": {
+      "type": "string",
+      "title": "Email do Motorista"
+    },
+    "driver_name": {
+      "type": "string",
+      "title": "Nome do Motorista"
+    },
+    "latitude": {
+      "type": "number",
+      "title": "Latitude"
+    },
+    "longitude": {
+      "type": "number",
+      "title": "Longitude"
+    },
+    "vehicle_id": {
+      "type": "string",
+      "title": "Ve\u00edculo"
+    },
+    "vehicle_plate": {
+      "type": "string",
+      "title": "Placa do Ve\u00edculo"
+    },
+    "route_id": {
+      "type": "string",
+      "title": "Rota Ativa"
+    },
+    "route_status": {
+      "type": "string",
+      "title": "Status da Rota"
+    },
+    "route_progress": {
+      "type": "number",
+      "title": "% Conclu\u00eddo"
+    },
+    "last_update": {
+      "type": "string",
+      "title": "\u00daltima Atualiza\u00e7\u00e3o"
+    },
+    "is_active": {
+      "type": "boolean",
+      "title": "Ativo",
+      "default": true
+    }
+  },
+  "required": [
+    "driver_email",
+    "latitude",
+    "longitude"
+  ]
+}
