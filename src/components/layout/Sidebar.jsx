@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Package, ShoppingCart, Truck, Users,
-  BoxSelect, Route, MapPin, BarChart3, Settings, LogOut, Menu, X
+  BoxSelect, Route, MapPin, BarChart3, Settings, LogOut, Menu, X, LineChart
 } from "lucide-react";
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
@@ -15,6 +15,7 @@ const navItems = [
   { label: "Cargas", icon: BoxSelect, path: "/loads" },
   { label: "Rotas", icon: Route, path: "/routes" },
   { label: "Rastreamento", icon: MapPin, path: "/tracking" },
+  { label: "Analytics", icon: LineChart, path: "/analytics" },
   { label: "Relatórios", icon: BarChart3, path: "/reports" },
   { label: "Configurações", icon: Settings, path: "/settings" },
 ];
