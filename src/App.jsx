@@ -21,6 +21,7 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Analytics from './pages/Analytics';
 import Notifications from './pages/Notifications';
+import MaintenancePage from './pages/Maintenance';
 import DriverRoute from './pages/driver/DriverRoute';
 import DriverStops from './pages/driver/DriverStops';
 import DriverMap from './pages/driver/DriverMap';
@@ -66,6 +67,7 @@ const AuthenticatedApp = () => {
         <Route path="/reports" element={<Reports />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/notifications" element={<Notifications />} />
+        <Route path="/maintenance" element={<MaintenancePage />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       {/* Driver Layout */}

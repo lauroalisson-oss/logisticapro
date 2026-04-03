@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Package, ShoppingCart, Truck, Users,
-  BoxSelect, Route, MapPin, BarChart3, Settings, LogOut, Menu, X, LineChart, Bell
+  BoxSelect, Route, MapPin, BarChart3, Settings, LogOut, Menu, X, LineChart, Bell, Wrench
 } from "lucide-react";
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
@@ -17,6 +17,7 @@ const navItems = [
   { label: "Rastreamento", icon: MapPin, path: "/tracking" },
   { label: "Notificações", icon: Bell, path: "/notifications" },
   { label: "Analytics", icon: LineChart, path: "/analytics" },
+  { label: "Manutenção", icon: Wrench, path: "/maintenance" },
   { label: "Relatórios", icon: BarChart3, path: "/reports" },
   { label: "Configurações", icon: Settings, path: "/settings" },
 ];
