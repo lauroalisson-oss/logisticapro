@@ -8,12 +8,15 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, ShoppingCart, Loader2, Search, PlusCircle, MinusCircle, MapPin, AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  Plus, Pencil, Trash2, ShoppingCart, Loader2, Search,
+  PlusCircle, MinusCircle, MapPin, AlertCircle, CheckCircle2,
+  AlertTriangle, Truck, Users
+} from "lucide-react";
 import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
-// Fix leaflet default marker
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
@@ -27,16 +30,29 @@ function MapFly({ lat, lng }) {
   return null;
 }
 
+const STATUS_OPTIONS = [
+  { value: "pending", label: "Pendente" },
+  { value: "routing", label: "Em Roteirização" },
+  { value: "in_transit", label: "Em Trânsito" },
+  { value: "delivered", label: "Entregue" },
+  { value: "issue", label: "Ocorrência" },
+  { value: "cancelled", label: "Cancelado" },
+];
+
 const emptyOrder = {
   order_number: "", client_name: "", client_phone: "", address: "",
   latitude: null, longitude: null, delivery_date: "", delivery_window: "full_day",
   priority: "normal", items: [], total_weight_kg: 0, total_volume_m3: 0,
-  total_linear_m: 0, status: "pending", notes: ""
+  total_linear_m: 0, status: "pending", notes: "",
+  vehicle_id: "", vehicle_plate: "", vehicle_nickname: "",
+  driver_id: "", driver_name: "",
 };
 
 export default function Orders() {
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(emptyOrder);
@@ -44,21 +60,26 @@ export default function Orders() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [geocoding, setGeocoding] = useState(false);
-  const [geocodeStatus, setGeocodeStatus] = useState(null); // null | "ok" | "error"
+  const [geocodeStatus, setGeocodeStatus] = useState(null);
   const geocodeTimer = useRef(null);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const [o, p] = await Promise.all([
+    const [o, p, v, u] = await Promise.all([
       base44.entities.Order.list(),
-      base44.entities.Product.list()
+      base44.entities.Product.list(),
+      base44.entities.Vehicle.list(),
+      base44.entities.User.list(),
     ]);
     setOrders(o);
     setProducts(p);
+    setVehicles(v);
+    setDrivers(u.filter(u => u.role === "driver"));
     setLoading(false);
   };
 
+  // ---- Geocoding ----
   const geocodeAddress = async (address) => {
     if (!address || address.length < 8) return;
     setGeocoding(true);
@@ -67,7 +88,7 @@ export default function Orders() {
     const res = await fetch(url, { headers: { "Accept-Language": "pt-BR" } });
     const data = await res.json();
     if (data.length > 0) {
-      const { lat, lon, display_name } = data[0];
+      const { lat, lon } = data[0];
       setForm(f => ({ ...f, latitude: parseFloat(lat), longitude: parseFloat(lon) }));
       setGeocodeStatus("ok");
     } else {
@@ -83,6 +104,40 @@ export default function Orders() {
     geocodeTimer.current = setTimeout(() => geocodeAddress(value), 1200);
   };
 
+  // ---- Capacity check ----
+  const selectedVehicle = vehicles.find(v => v.id === form.vehicle_id);
+  const capacityAlerts = [];
+  if (selectedVehicle) {
+    const wPct = selectedVehicle.max_weight_kg ? (form.total_weight_kg / selectedVehicle.max_weight_kg) * 100 : 0;
+    const vPct = selectedVehicle.max_volume_m3 ? (form.total_volume_m3 / selectedVehicle.max_volume_m3) * 100 : 0;
+    const lPct = selectedVehicle.max_linear_m ? (form.total_linear_m / selectedVehicle.max_linear_m) * 100 : 0;
+    if (wPct > 100) capacityAlerts.push({ label: "Peso", pct: wPct, current: `${form.total_weight_kg.toFixed(1)} kg`, max: `${selectedVehicle.max_weight_kg} kg` });
+    if (vPct > 100) capacityAlerts.push({ label: "Volume", pct: vPct, current: `${form.total_volume_m3.toFixed(3)} m³`, max: `${selectedVehicle.max_volume_m3} m³` });
+    if (lPct > 100) capacityAlerts.push({ label: "Metro Linear", pct: lPct, current: `${form.total_linear_m.toFixed(2)} m`, max: `${selectedVehicle.max_linear_m} m` });
+  }
+
+  // Max allowed items composition
+  const maxComposition = selectedVehicle && (form.items || []).length > 0
+    ? (() => {
+        const items = form.items.filter(i => i.product_name);
+        if (!items.length) return null;
+        let maxByWeight = selectedVehicle.max_weight_kg && form.total_weight_kg > 0
+          ? Math.floor((selectedVehicle.max_weight_kg / form.total_weight_kg) * items.reduce((s, i) => s + (i.quantity || 0), 0))
+          : Infinity;
+        let maxByVolume = selectedVehicle.max_volume_m3 && form.total_volume_m3 > 0
+          ? Math.floor((selectedVehicle.max_volume_m3 / form.total_volume_m3) * items.reduce((s, i) => s + (i.quantity || 0), 0))
+          : Infinity;
+        const totalQty = items.reduce((s, i) => s + (i.quantity || 0), 0);
+        const limitQty = Math.min(maxByWeight, maxByVolume);
+        if (limitQty < totalQty) {
+          const factor = limitQty / totalQty;
+          return items.map(i => ({ ...i, maxQty: Math.floor(i.quantity * factor) }));
+        }
+        return null;
+      })()
+    : null;
+
+  // ---- Items ----
   const calcItemTotals = (items) => {
     let totalWeight = 0, totalVolume = 0, totalLinear = 0;
     items.forEach(item => {
@@ -93,9 +148,7 @@ export default function Orders() {
     return { total_weight_kg: totalWeight, total_volume_m3: totalVolume, total_linear_m: totalLinear };
   };
 
-  const addItem = () => {
-    setForm({ ...form, items: [...(form.items || []), { product_id: "", product_name: "", quantity: 1, unit_weight_kg: 0, unit_volume_m3: 0, calc_type: "unit", total_weight_kg: 0, total_volume_m3: 0, linear_m: 0 }] });
-  };
+  const addItem = () => setForm({ ...form, items: [...(form.items || []), { product_id: "", product_name: "", quantity: 1, unit_weight_kg: 0, unit_volume_m3: 0, calc_type: "unit", total_weight_kg: 0, total_volume_m3: 0, linear_m: 0 }] });
 
   const updateItem = (idx, field, value) => {
     const items = [...(form.items || [])];
@@ -124,25 +177,32 @@ export default function Orders() {
         items[idx].linear_m = product ? ((product.length_cm || 0) / 100) * qty : 0;
       }
     }
-    const totals = calcItemTotals(items);
-    setForm({ ...form, items, ...totals });
+    setForm({ ...form, items, ...calcItemTotals(items) });
   };
 
   const removeItem = (idx) => {
     const items = [...(form.items || [])];
     items.splice(idx, 1);
-    const totals = calcItemTotals(items);
-    setForm({ ...form, items, ...totals });
+    setForm({ ...form, items, ...calcItemTotals(items) });
   };
 
+  // ---- Vehicle / Driver selection ----
+  const handleVehicleChange = (id) => {
+    const v = vehicles.find(v => v.id === id);
+    setForm(f => ({ ...f, vehicle_id: id, vehicle_plate: v?.plate || "", vehicle_nickname: v?.nickname || "" }));
+  };
+
+  const handleDriverChange = (id) => {
+    const d = drivers.find(d => d.id === id);
+    setForm(f => ({ ...f, driver_id: id, driver_name: d?.full_name || "" }));
+  };
+
+  // ---- Save ----
   const handleSave = async () => {
     const data = { ...form };
     if (!data.order_number) data.order_number = `PED-${Date.now().toString(36).toUpperCase()}`;
-    if (editId) {
-      await base44.entities.Order.update(editId, data);
-    } else {
-      await base44.entities.Order.create(data);
-    }
+    if (editId) await base44.entities.Order.update(editId, data);
+    else await base44.entities.Order.create(data);
     setDialogOpen(false);
     setForm(emptyOrder);
     setEditId(null);
@@ -151,7 +211,7 @@ export default function Orders() {
   };
 
   const handleEdit = (o) => {
-    setForm({ ...o });
+    setForm({ ...emptyOrder, ...o });
     setEditId(o.id);
     setGeocodeStatus(o.latitude ? "ok" : null);
     setDialogOpen(true);
@@ -188,15 +248,12 @@ export default function Orders() {
           <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos Status</SelectItem>
-            <SelectItem value="pending">Pendente</SelectItem>
-            <SelectItem value="routing">Roteirização</SelectItem>
-            <SelectItem value="in_transit">Em Trânsito</SelectItem>
-            <SelectItem value="delivered">Entregue</SelectItem>
-            <SelectItem value="issue">Ocorrência</SelectItem>
+            {STATUS_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
 
+      {/* Table */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -205,9 +262,8 @@ export default function Orders() {
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Pedido</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Cliente</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">Endereço</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">Mapa</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">Veículo / Motorista</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden lg:table-cell">Peso</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden lg:table-cell">Volume</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Ações</th>
               </tr>
@@ -217,20 +273,17 @@ export default function Orders() {
                 <tr key={o.id} className="border-b border-border hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-medium">{o.order_number}</td>
                   <td className="px-4 py-3">{o.client_name}</td>
-                  <td className="px-4 py-3 hidden md:table-cell text-muted-foreground max-w-[200px] truncate">{o.address}</td>
-                  <td className="px-4 py-3 hidden md:table-cell">
-                    {o.latitude && o.longitude ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
-                        <MapPin className="w-3 h-3" /> Geolocalizado
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-xs text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
-                        <AlertCircle className="w-3 h-3" /> Sem pin
-                      </span>
-                    )}
+                  <td className="px-4 py-3 hidden md:table-cell text-muted-foreground max-w-[180px] truncate">
+                    <span className="flex items-center gap-1">
+                      {o.latitude ? <MapPin className="w-3 h-3 text-green-600 flex-shrink-0" /> : <AlertCircle className="w-3 h-3 text-orange-400 flex-shrink-0" />}
+                      {o.address}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell text-xs text-muted-foreground">
+                    {o.vehicle_plate && <span className="block">🚛 {o.vehicle_nickname || o.vehicle_plate}</span>}
+                    {o.driver_name && <span className="block">👤 {o.driver_name}</span>}
                   </td>
                   <td className="px-4 py-3 hidden lg:table-cell">{(o.total_weight_kg || 0).toFixed(1)} kg</td>
-                  <td className="px-4 py-3 hidden lg:table-cell">{(o.total_volume_m3 || 0).toFixed(3)} m³</td>
                   <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
@@ -258,6 +311,8 @@ export default function Orders() {
             <DialogTitle>{editId ? "Editar Pedido" : "Novo Pedido"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+
+            {/* Basic info */}
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Nº Pedido</Label><Input value={form.order_number} onChange={(e) => setForm({ ...form, order_number: e.target.value })} /></div>
               <div><Label>Cliente</Label><Input value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} /></div>
@@ -278,7 +333,115 @@ export default function Orders() {
               </div>
             </div>
 
-            {/* Address with geocoding */}
+            {/* Status */}
+            <div>
+              <Label>Status do Pedido</Label>
+              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Vehicle & Driver */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="flex items-center gap-1.5"><Truck className="w-3.5 h-3.5" /> Veículo</Label>
+                <Select value={form.vehicle_id || ""} onValueChange={handleVehicleChange}>
+                  <SelectTrigger><SelectValue placeholder="Selecionar veículo..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={null}>Nenhum</SelectItem>
+                    {vehicles.map(v => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.nickname} ({v.plate}) — {v.max_weight_kg} kg
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Motorista</Label>
+                <Select value={form.driver_id || ""} onValueChange={handleDriverChange}>
+                  <SelectTrigger><SelectValue placeholder="Selecionar motorista..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={null}>Nenhum</SelectItem>
+                    {drivers.map(d => <SelectItem key={d.id} value={d.id}>{d.full_name || d.email}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Capacity alerts */}
+            {selectedVehicle && (form.items || []).length > 0 && (
+              <div className={`rounded-xl border p-4 space-y-3 ${capacityAlerts.length > 0 ? "bg-red-50 border-red-300" : "bg-green-50 border-green-200"}`}>
+                <p className={`text-sm font-semibold flex items-center gap-2 ${capacityAlerts.length > 0 ? "text-red-700" : "text-green-700"}`}>
+                  {capacityAlerts.length > 0 ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                  {capacityAlerts.length > 0 ? "Capacidade excedida!" : "Dentro da capacidade do veículo"}
+                </p>
+
+                {/* Capacity bars */}
+                <div className="space-y-2">
+                  {selectedVehicle.max_weight_kg > 0 && (() => {
+                    const pct = Math.min((form.total_weight_kg / selectedVehicle.max_weight_kg) * 100, 100);
+                    const over = form.total_weight_kg > selectedVehicle.max_weight_kg;
+                    return (
+                      <div className="space-y-0.5">
+                        <div className="flex justify-between text-xs">
+                          <span className={over ? "text-red-700 font-medium" : "text-muted-foreground"}>⚖️ Peso: {form.total_weight_kg.toFixed(1)} / {selectedVehicle.max_weight_kg} kg</span>
+                          <span className={over ? "text-red-700 font-bold" : "text-muted-foreground"}>{((form.total_weight_kg / selectedVehicle.max_weight_kg) * 100).toFixed(0)}%</span>
+                        </div>
+                        <div className="h-2 bg-white/60 rounded-full overflow-hidden border border-white">
+                          <div className={`h-full rounded-full transition-all ${over ? "bg-red-500" : "bg-green-500"}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {selectedVehicle.max_volume_m3 > 0 && (() => {
+                    const pct = Math.min((form.total_volume_m3 / selectedVehicle.max_volume_m3) * 100, 100);
+                    const over = form.total_volume_m3 > selectedVehicle.max_volume_m3;
+                    return (
+                      <div className="space-y-0.5">
+                        <div className="flex justify-between text-xs">
+                          <span className={over ? "text-red-700 font-medium" : "text-muted-foreground"}>📦 Volume: {form.total_volume_m3.toFixed(3)} / {selectedVehicle.max_volume_m3} m³</span>
+                          <span className={over ? "text-red-700 font-bold" : "text-muted-foreground"}>{((form.total_volume_m3 / selectedVehicle.max_volume_m3) * 100).toFixed(0)}%</span>
+                        </div>
+                        <div className="h-2 bg-white/60 rounded-full overflow-hidden border border-white">
+                          <div className={`h-full rounded-full transition-all ${over ? "bg-red-500" : "bg-green-500"}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {selectedVehicle.max_linear_m > 0 && form.total_linear_m > 0 && (() => {
+                    const pct = Math.min((form.total_linear_m / selectedVehicle.max_linear_m) * 100, 100);
+                    const over = form.total_linear_m > selectedVehicle.max_linear_m;
+                    return (
+                      <div className="space-y-0.5">
+                        <div className="flex justify-between text-xs">
+                          <span className={over ? "text-red-700 font-medium" : "text-muted-foreground"}>📏 Linear: {form.total_linear_m.toFixed(2)} / {selectedVehicle.max_linear_m} m</span>
+                          <span className={over ? "text-red-700 font-bold" : "text-muted-foreground"}>{((form.total_linear_m / selectedVehicle.max_linear_m) * 100).toFixed(0)}%</span>
+                        </div>
+                        <div className="h-2 bg-white/60 rounded-full overflow-hidden border border-white">
+                          <div className={`h-full rounded-full transition-all ${over ? "bg-red-500" : "bg-green-500"}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Max composition suggestion */}
+                {maxComposition && (
+                  <div className="bg-white/80 rounded-lg p-3 space-y-1 border border-red-200">
+                    <p className="text-xs font-semibold text-red-700 flex items-center gap-1.5"><AlertTriangle className="w-3 h-3" /> Composição máxima para este veículo:</p>
+                    {maxComposition.map((item, i) => (
+                      <p key={i} className="text-xs text-red-600">• {item.product_name}: máx. <strong>{item.maxQty}</strong> un (atual: {item.quantity})</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Address */}
             <div className="space-y-2">
               <Label>Endereço Completo</Label>
               <div className="relative">
@@ -295,25 +458,14 @@ export default function Orders() {
                 </div>
               </div>
               {geocodeStatus === "error" && (
-                <p className="text-xs text-orange-600 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" /> Endereço não encontrado. Tente ser mais específico (inclua cidade e estado).
-                </p>
+                <p className="text-xs text-orange-600 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Endereço não encontrado. Seja mais específico (cidade e estado).</p>
               )}
               {geocodeStatus === "ok" && (
-                <p className="text-xs text-green-700 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Endereço geolocalizado: {form.latitude?.toFixed(5)}, {form.longitude?.toFixed(5)}
-                </p>
+                <p className="text-xs text-green-700 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Geolocalizado: {form.latitude?.toFixed(5)}, {form.longitude?.toFixed(5)}</p>
               )}
-
-              {/* Map preview */}
               {form.latitude && form.longitude && (
-                <div className="h-48 rounded-lg overflow-hidden border border-border mt-2">
-                  <MapContainer
-                    center={[form.latitude, form.longitude]}
-                    zoom={15}
-                    style={{ height: "100%", width: "100%" }}
-                    scrollWheelZoom={false}
-                  >
+                <div className="h-44 rounded-lg overflow-hidden border border-border mt-2">
+                  <MapContainer center={[form.latitude, form.longitude]} zoom={15} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     <Marker position={[form.latitude, form.longitude]} />
                     <MapFly lat={form.latitude} lng={form.longitude} />
@@ -383,10 +535,10 @@ export default function Orders() {
 
             <div><Label>Observações</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
 
-            {!form.latitude && form.address && geocodeStatus !== "ok" && (
-              <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>O endereço ainda não foi geolocalizado. O ponto no mapa e a otimização de rota dependem disso.</span>
+            {capacityAlerts.length > 0 && (
+              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-300 rounded-lg text-xs text-red-700">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>A carga excede a capacidade do veículo selecionado. Reduza os itens ou escolha outro veículo.</span>
               </div>
             )}
 

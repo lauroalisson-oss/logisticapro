@@ -113,6 +113,26 @@
       ],
       "default": "pending"
     },
+    "vehicle_id": {
+      "type": "string",
+      "title": "Ve\u00edculo"
+    },
+    "vehicle_plate": {
+      "type": "string",
+      "title": "Placa do Ve\u00edculo"
+    },
+    "vehicle_nickname": {
+      "type": "string",
+      "title": "Nome do Ve\u00edculo"
+    },
+    "driver_id": {
+      "type": "string",
+      "title": "Motorista"
+    },
+    "driver_name": {
+      "type": "string",
+      "title": "Nome do Motorista"
+    },
     "load_id": {
       "type": "string",
       "title": "Carga Vinculada"
