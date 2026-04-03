@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Route, Loader2, MapPin, Eye, Trash2 } from "lucide-react";
+import { Plus, Route, Loader2, MapPin, Eye, Trash2, Map } from "lucide-react";
+import RouteMapView from "../components/routes/RouteMapView";
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -22,6 +23,7 @@ export default function Routes() {
   const [selectedLoad, setSelectedLoad] = useState("");
   const [selectedDriver, setSelectedDriver] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [activeTab, setActiveTab] = useState("list");
 
   useEffect(() => { loadData(); }, []);
 
@@ -99,6 +101,18 @@ export default function Routes() {
         </Button>
       </PageHeader>
 
+      {/* Tabs */}
+      <div className="flex gap-1 bg-secondary/50 p-1 rounded-lg w-fit">
+        <button onClick={() => setActiveTab("list")} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === "list" ? "bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+          <Route className="w-4 h-4" /> Lista
+        </button>
+        <button onClick={() => setActiveTab("map")} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === "map" ? "bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+          <Map className="w-4 h-4" /> Mapa ao Vivo
+        </button>
+      </div>
+
+      {activeTab === "map" && <RouteMapView />}
+      {activeTab === "list" && <>
       <Select value={filterStatus} onValueChange={setFilterStatus}>
         <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
         <SelectContent>
@@ -153,6 +167,7 @@ export default function Routes() {
           <p>Nenhuma rota encontrada</p>
         </div>
       )}
+      </> }
 
       {/* New Route Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
