@@ -7,23 +7,18 @@
       "title": "Perfil",
       "enum": [
         "admin",
-        "dispatcher",
-        "driver"
-      ],
-      "default": "driver"
+        "user",
+        "driver",
+        "dispatcher"
+      ]
     },
     "phone": {
       "type": "string",
       "title": "Telefone"
     },
-    "vehicle_id": {
+    "driver_pin": {
       "type": "string",
-      "title": "Ve\u00edculo Vinculado"
-    },
-    "is_active": {
-      "type": "boolean",
-      "title": "Ativo",
-      "default": true
+      "title": "PIN do Motorista"
     }
   }
 }

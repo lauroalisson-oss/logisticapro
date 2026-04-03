@@ -116,6 +116,22 @@
       "title": "Data",
       "format": "date"
     },
+    "km_departure": {
+      "type": "number",
+      "title": "KM Sa\u00edda"
+    },
+    "km_departure_photo": {
+      "type": "string",
+      "title": "Foto KM Sa\u00edda"
+    },
+    "km_arrival": {
+      "type": "number",
+      "title": "KM Chegada"
+    },
+    "km_arrival_photo": {
+      "type": "string",
+      "title": "Foto KM Chegada"
+    },
     "notes": {
       "type": "string",
       "title": "Observa\u00e7\u00f5es"
