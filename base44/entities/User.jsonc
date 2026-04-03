@@ -19,6 +19,34 @@
     "driver_pin": {
       "type": "string",
       "title": "PIN do Motorista"
+    },
+    "cpf": {
+      "type": "string",
+      "title": "CPF"
+    },
+    "license_number": {
+      "type": "string",
+      "title": "N\u00famero da Habilita\u00e7\u00e3o (CNH)"
+    },
+    "license_category": {
+      "type": "string",
+      "title": "Categoria CNH",
+      "enum": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "AB",
+        "AC",
+        "AD",
+        "AE",
+        "ACC"
+      ]
+    },
+    "license_points": {
+      "type": "number",
+      "title": "Pontos na Carteira"
     }
   }
 }

@@ -16,7 +16,7 @@ export default function Drivers() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ email: "", full_name: "", phone: "" });
+  const [form, setForm] = useState({ email: "", full_name: "", phone: "", cpf: "", license_number: "", license_category: "", license_points: "" });
   const [saving, setSaving] = useState(false);
   const [newPin, setNewPin] = useState(null);
   const [copiedPin, setCopiedPin] = useState(false);
@@ -38,12 +38,18 @@ export default function Drivers() {
     setSaving(true);
     const pin = generatePin();
     await base44.users.inviteUser(form.email, "driver");
-    // Update user with PIN and phone after a brief delay (user is created by invite)
     setTimeout(async () => {
       const all = await base44.entities.User.list();
       const invited = all.find(u => u.email === form.email);
       if (invited) {
-        await base44.entities.User.update(invited.id, { driver_pin: pin, phone: form.phone });
+        await base44.entities.User.update(invited.id, {
+          driver_pin: pin,
+          phone: form.phone,
+          cpf: form.cpf,
+          license_number: form.license_number,
+          license_category: form.license_category,
+          license_points: form.license_points ? Number(form.license_points) : undefined,
+        });
       }
       await loadData();
     }, 2000);
@@ -96,12 +102,43 @@ export default function Drivers() {
               <>
                 <div className="space-y-3">
                   <div>
+                    <Label>Nome Completo *</Label>
+                    <Input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="Nome do motorista" />
+                  </div>
+                  <div>
                     <Label>E-mail *</Label>
                     <Input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="motorista@empresa.com" type="email" />
                   </div>
                   <div>
+                    <Label>CPF</Label>
+                    <Input value={form.cpf} onChange={e => setForm(f => ({ ...f, cpf: e.target.value }))} placeholder="000.000.000-00" />
+                  </div>
+                  <div>
                     <Label>Telefone</Label>
                     <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="(11) 99999-9999" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Nº Habilitação (CNH)</Label>
+                      <Input value={form.license_number} onChange={e => setForm(f => ({ ...f, license_number: e.target.value }))} placeholder="00000000000" />
+                    </div>
+                    <div>
+                      <Label>Pontos na Carteira</Label>
+                      <Input type="number" min="0" max="40" value={form.license_points} onChange={e => setForm(f => ({ ...f, license_points: e.target.value }))} placeholder="0" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Categoria CNH</Label>
+                    <select
+                      value={form.license_category}
+                      onChange={e => setForm(f => ({ ...f, license_category: e.target.value }))}
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="">Selecione...</option>
+                      {["A","B","C","D","E","AB","AC","AD","AE","ACC"].map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
@@ -158,8 +195,15 @@ export default function Drivers() {
                   <p className="text-xs text-muted-foreground truncate">{d.email}</p>
                 </div>
               </div>
-              <div className="space-y-2 text-xs text-muted-foreground">
-                {d.phone && <p>Tel: {d.phone}</p>}
+              <div className="space-y-1.5 text-xs text-muted-foreground">
+                {d.phone && <p>📞 {d.phone}</p>}
+                {d.cpf && <p>CPF: {d.cpf}</p>}
+                {d.license_number && (
+                  <p>CNH: {d.license_number} {d.license_category && <span className="ml-1 font-semibold text-foreground bg-primary/10 px-1.5 py-0.5 rounded">{d.license_category}</span>}</p>
+                )}
+                {d.license_points !== undefined && d.license_points !== null && d.license_points !== "" && (
+                  <p className={d.license_points >= 20 ? "text-red-600 font-medium" : ""}>Pontos: {d.license_points} {d.license_points >= 20 ? "⚠️" : ""}</p>
+                )}
                 <p>Rotas concluídas: {completed} / {driverRoutes.length}</p>
               </div>
 
