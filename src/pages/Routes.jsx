@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Route, Loader2, MapPin, Eye, Trash2, Map } from "lucide-react";
+import { Plus, Route, Loader2, MapPin, Eye, Trash2, Map, Zap } from "lucide-react";
 import RouteMapView from "../components/routes/RouteMapView";
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -24,6 +24,7 @@ export default function Routes() {
   const [selectedDriver, setSelectedDriver] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [activeTab, setActiveTab] = useState("list");
+  const [optimizeRoute, setOptimizeRoute] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -44,13 +45,33 @@ export default function Routes() {
   const readyLoads = loads.filter(l => ["assembling", "ready"].includes(l.status));
   const drivers = users.filter(u => u.role === "driver");
 
+  // Nearest-neighbor TSP optimization
+  const optimizeStops = (stopsInput) => {
+    if (stopsInput.length <= 2) return stopsInput;
+    const remaining = [...stopsInput];
+    const sorted = [remaining.splice(0, 1)[0]];
+    while (remaining.length > 0) {
+      const last = sorted[sorted.length - 1];
+      let nearestIdx = 0;
+      let nearestDist = Infinity;
+      remaining.forEach((s, i) => {
+        const dlat = (s.latitude || 0) - (last.latitude || 0);
+        const dlng = (s.longitude || 0) - (last.longitude || 0);
+        const dist = dlat * dlat + dlng * dlng;
+        if (dist < nearestDist) { nearestDist = dist; nearestIdx = i; }
+      });
+      sorted.push(remaining.splice(nearestIdx, 1)[0]);
+    }
+    return sorted.map((s, i) => ({ ...s, sequence: i + 1 }));
+  };
+
   const handleCreate = async () => {
     const load = loads.find(l => l.id === selectedLoad);
     const driver = users.find(u => u.id === selectedDriver);
     if (!load || !driver) return;
 
     const loadOrders = orders.filter(o => (load.order_ids || []).includes(o.id));
-    const stops = loadOrders.map((o, idx) => ({
+    const rawStops = loadOrders.map((o, idx) => ({
       order_id: o.id,
       order_number: o.order_number,
       client_name: o.client_name,
@@ -60,6 +81,7 @@ export default function Routes() {
       sequence: idx + 1,
       status: "pending",
     }));
+    const stops = optimizeRoute ? optimizeStops(rawStops) : rawStops;
 
     const route = {
       route_number: `ROT-${Date.now().toString(36).toUpperCase()}`,
@@ -195,6 +217,19 @@ export default function Routes() {
                   {drivers.map(d => <SelectItem key={d.id} value={d.id}>{d.full_name} ({d.email})</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+              <input
+                type="checkbox"
+                id="optimize"
+                checked={optimizeRoute}
+                onChange={e => setOptimizeRoute(e.target.checked)}
+                className="w-4 h-4 accent-primary"
+              />
+              <label htmlFor="optimize" className="text-sm cursor-pointer flex-1">
+                <span className="font-medium flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-primary" /> Otimizar Rota</span>
+                <span className="block text-xs text-muted-foreground">Calcula a sequência mais curta entre as paradas automaticamente</span>
+              </label>
             </div>
             <Button onClick={handleCreate} className="w-full" disabled={!selectedLoad || !selectedDriver}>Criar Rota</Button>
           </div>

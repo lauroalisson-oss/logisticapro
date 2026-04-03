@@ -1,0 +1,74 @@
+{
+  "name": "Alert",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "title": "Tipo",
+      "enum": [
+        "issue",
+        "not_delivered",
+        "delay"
+      ],
+      "default": "issue"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "pending",
+        "resolved"
+      ],
+      "default": "pending"
+    },
+    "route_id": {
+      "type": "string",
+      "title": "ID da Rota"
+    },
+    "route_number": {
+      "type": "string",
+      "title": "N\u00famero da Rota"
+    },
+    "order_id": {
+      "type": "string",
+      "title": "ID do Pedido"
+    },
+    "order_number": {
+      "type": "string",
+      "title": "N\u00famero do Pedido"
+    },
+    "client_name": {
+      "type": "string",
+      "title": "Cliente"
+    },
+    "address": {
+      "type": "string",
+      "title": "Endere\u00e7o"
+    },
+    "driver_name": {
+      "type": "string",
+      "title": "Motorista"
+    },
+    "driver_email": {
+      "type": "string",
+      "title": "Email Motorista"
+    },
+    "notes": {
+      "type": "string",
+      "title": "Observa\u00e7\u00f5es"
+    },
+    "resolved_at": {
+      "type": "string",
+      "title": "Resolvido em"
+    },
+    "resolved_by": {
+      "type": "string",
+      "title": "Resolvido por"
+    }
+  },
+  "required": [
+    "type",
+    "status",
+    "route_id"
+  ]
+}
