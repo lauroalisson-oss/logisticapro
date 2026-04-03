@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
@@ -8,11 +8,28 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Trash2, ShoppingCart, Loader2, Search, PlusCircle, MinusCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, ShoppingCart, Loader2, Search, PlusCircle, MinusCircle, MapPin, AlertCircle, CheckCircle2 } from "lucide-react";
+import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+
+// Fix leaflet default marker
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+});
+
+function MapFly({ lat, lng }) {
+  const map = useMap();
+  useEffect(() => { if (lat && lng) map.setView([lat, lng], 15); }, [lat, lng]);
+  return null;
+}
 
 const emptyOrder = {
   order_number: "", client_name: "", client_phone: "", address: "",
-  latitude: 0, longitude: 0, delivery_date: "", delivery_window: "full_day",
+  latitude: null, longitude: null, delivery_date: "", delivery_window: "full_day",
   priority: "normal", items: [], total_weight_kg: 0, total_volume_m3: 0,
   total_linear_m: 0, status: "pending", notes: ""
 };
@@ -26,6 +43,9 @@ export default function Orders() {
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeStatus, setGeocodeStatus] = useState(null); // null | "ok" | "error"
+  const geocodeTimer = useRef(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -37,6 +57,30 @@ export default function Orders() {
     setOrders(o);
     setProducts(p);
     setLoading(false);
+  };
+
+  const geocodeAddress = async (address) => {
+    if (!address || address.length < 8) return;
+    setGeocoding(true);
+    setGeocodeStatus(null);
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=pt-BR`;
+    const res = await fetch(url, { headers: { "Accept-Language": "pt-BR" } });
+    const data = await res.json();
+    if (data.length > 0) {
+      const { lat, lon, display_name } = data[0];
+      setForm(f => ({ ...f, latitude: parseFloat(lat), longitude: parseFloat(lon) }));
+      setGeocodeStatus("ok");
+    } else {
+      setGeocodeStatus("error");
+    }
+    setGeocoding(false);
+  };
+
+  const handleAddressChange = (value) => {
+    setForm(f => ({ ...f, address: value, latitude: null, longitude: null }));
+    setGeocodeStatus(null);
+    clearTimeout(geocodeTimer.current);
+    geocodeTimer.current = setTimeout(() => geocodeAddress(value), 1200);
   };
 
   const calcItemTotals = (items) => {
@@ -56,7 +100,6 @@ export default function Orders() {
   const updateItem = (idx, field, value) => {
     const items = [...(form.items || [])];
     items[idx] = { ...items[idx], [field]: value };
-
     if (field === "product_id") {
       const product = products.find(p => p.id === value);
       if (product) {
@@ -64,18 +107,14 @@ export default function Orders() {
           ? (product.height_cm * product.width_cm * product.length_cm) / 1_000_000
           : product.volume_m3 || 0;
         items[idx] = {
-          ...items[idx],
-          product_name: product.name,
-          unit_weight_kg: product.unit_weight_kg || 0,
-          unit_volume_m3: vol,
-          calc_type: product.calc_type,
+          ...items[idx], product_name: product.name,
+          unit_weight_kg: product.unit_weight_kg || 0, unit_volume_m3: vol, calc_type: product.calc_type,
           total_weight_kg: (product.unit_weight_kg || 0) * items[idx].quantity,
           total_volume_m3: vol * items[idx].quantity,
           linear_m: product.calc_type === "unit" ? ((product.length_cm || 0) / 100) * items[idx].quantity : 0,
         };
       }
     }
-
     if (field === "quantity") {
       const qty = parseFloat(value) || 0;
       items[idx].total_weight_kg = items[idx].unit_weight_kg * qty;
@@ -85,7 +124,6 @@ export default function Orders() {
         items[idx].linear_m = product ? ((product.length_cm || 0) / 100) * qty : 0;
       }
     }
-
     const totals = calcItemTotals(items);
     setForm({ ...form, items, ...totals });
   };
@@ -99,9 +137,7 @@ export default function Orders() {
 
   const handleSave = async () => {
     const data = { ...form };
-    if (!data.order_number) {
-      data.order_number = `PED-${Date.now().toString(36).toUpperCase()}`;
-    }
+    if (!data.order_number) data.order_number = `PED-${Date.now().toString(36).toUpperCase()}`;
     if (editId) {
       await base44.entities.Order.update(editId, data);
     } else {
@@ -110,12 +146,14 @@ export default function Orders() {
     setDialogOpen(false);
     setForm(emptyOrder);
     setEditId(null);
+    setGeocodeStatus(null);
     loadData();
   };
 
   const handleEdit = (o) => {
     setForm({ ...o });
     setEditId(o.id);
+    setGeocodeStatus(o.latitude ? "ok" : null);
     setDialogOpen(true);
   };
 
@@ -136,7 +174,7 @@ export default function Orders() {
   return (
     <div className="space-y-6">
       <PageHeader title="Pedidos" subtitle={`${orders.length} pedidos`}>
-        <Button onClick={() => { setForm({ ...emptyOrder, order_number: `PED-${Date.now().toString(36).toUpperCase()}` }); setEditId(null); setDialogOpen(true); }}>
+        <Button onClick={() => { setForm({ ...emptyOrder, order_number: `PED-${Date.now().toString(36).toUpperCase()}` }); setEditId(null); setGeocodeStatus(null); setDialogOpen(true); }}>
           <Plus className="w-4 h-4 mr-2" /> Novo Pedido
         </Button>
       </PageHeader>
@@ -159,7 +197,6 @@ export default function Orders() {
         </Select>
       </div>
 
-      {/* Table */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -168,6 +205,7 @@ export default function Orders() {
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Pedido</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Cliente</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">Endereço</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">Mapa</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden lg:table-cell">Peso</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden lg:table-cell">Volume</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
@@ -180,6 +218,17 @@ export default function Orders() {
                   <td className="px-4 py-3 font-medium">{o.order_number}</td>
                   <td className="px-4 py-3">{o.client_name}</td>
                   <td className="px-4 py-3 hidden md:table-cell text-muted-foreground max-w-[200px] truncate">{o.address}</td>
+                  <td className="px-4 py-3 hidden md:table-cell">
+                    {o.latitude && o.longitude ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+                        <MapPin className="w-3 h-3" /> Geolocalizado
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
+                        <AlertCircle className="w-3 h-3" /> Sem pin
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 hidden lg:table-cell">{(o.total_weight_kg || 0).toFixed(1)} kg</td>
                   <td className="px-4 py-3 hidden lg:table-cell">{(o.total_volume_m3 || 0).toFixed(3)} m³</td>
                   <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
@@ -228,7 +277,51 @@ export default function Orders() {
                 </Select>
               </div>
             </div>
-            <div><Label>Endereço</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
+
+            {/* Address with geocoding */}
+            <div className="space-y-2">
+              <Label>Endereço Completo</Label>
+              <div className="relative">
+                <Input
+                  value={form.address}
+                  onChange={(e) => handleAddressChange(e.target.value)}
+                  placeholder="Rua, número, bairro, cidade, estado..."
+                  className="pr-9"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {geocoding && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+                  {!geocoding && geocodeStatus === "ok" && <CheckCircle2 className="w-4 h-4 text-green-600" />}
+                  {!geocoding && geocodeStatus === "error" && <AlertCircle className="w-4 h-4 text-orange-500" />}
+                </div>
+              </div>
+              {geocodeStatus === "error" && (
+                <p className="text-xs text-orange-600 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> Endereço não encontrado. Tente ser mais específico (inclua cidade e estado).
+                </p>
+              )}
+              {geocodeStatus === "ok" && (
+                <p className="text-xs text-green-700 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Endereço geolocalizado: {form.latitude?.toFixed(5)}, {form.longitude?.toFixed(5)}
+                </p>
+              )}
+
+              {/* Map preview */}
+              {form.latitude && form.longitude && (
+                <div className="h-48 rounded-lg overflow-hidden border border-border mt-2">
+                  <MapContainer
+                    center={[form.latitude, form.longitude]}
+                    zoom={15}
+                    style={{ height: "100%", width: "100%" }}
+                    scrollWheelZoom={false}
+                  >
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <Marker position={[form.latitude, form.longitude]} />
+                    <MapFly lat={form.latitude} lng={form.longitude} />
+                  </MapContainer>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Data de Entrega</Label><Input type="date" value={form.delivery_date} onChange={(e) => setForm({ ...form, delivery_date: e.target.value })} /></div>
               <div>
@@ -281,7 +374,6 @@ export default function Orders() {
               ))}
             </div>
 
-            {/* Totals */}
             {(form.items || []).length > 0 && (
               <div className="p-3 bg-primary/5 rounded-lg space-y-1">
                 <p className="text-xs font-semibold text-primary">Resumo da Carga</p>
@@ -290,6 +382,14 @@ export default function Orders() {
             )}
 
             <div><Label>Observações</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+
+            {!form.latitude && form.address && geocodeStatus !== "ok" && (
+              <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>O endereço ainda não foi geolocalizado. O ponto no mapa e a otimização de rota dependem disso.</span>
+              </div>
+            )}
+
             <Button onClick={handleSave} className="w-full">Salvar Pedido</Button>
           </div>
         </DialogContent>
