@@ -1,0 +1,65 @@
+{
+  "name": "FuelRecord",
+  "type": "object",
+  "properties": {
+    "vehicle_id": {
+      "type": "string",
+      "title": "Ve\u00edculo"
+    },
+    "vehicle_plate": {
+      "type": "string",
+      "title": "Placa"
+    },
+    "vehicle_nickname": {
+      "type": "string",
+      "title": "Nome do Ve\u00edculo"
+    },
+    "driver_id": {
+      "type": "string",
+      "title": "Motorista"
+    },
+    "driver_name": {
+      "type": "string",
+      "title": "Nome do Motorista"
+    },
+    "date": {
+      "type": "string",
+      "title": "Data",
+      "format": "date"
+    },
+    "km": {
+      "type": "number",
+      "title": "KM no Momento"
+    },
+    "liters": {
+      "type": "number",
+      "title": "Litros Abastecidos"
+    },
+    "value": {
+      "type": "number",
+      "title": "Valor Total (R$)"
+    },
+    "fuel_type": {
+      "type": "string",
+      "title": "Tipo de Combust\u00edvel",
+      "enum": [
+        "gasoline",
+        "diesel",
+        "ethanol",
+        "gnv"
+      ],
+      "default": "diesel"
+    },
+    "notes": {
+      "type": "string",
+      "title": "Observa\u00e7\u00f5es"
+    }
+  },
+  "required": [
+    "vehicle_id",
+    "date",
+    "km",
+    "liters",
+    "value"
+  ]
+}
