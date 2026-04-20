@@ -4,9 +4,23 @@ import PageHeader from "../components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Users, Loader2, Search, UserCircle, Plus, Key, Copy, CheckCircle2, X } from "lucide-react";
+import { Users, Loader2, Search, UserCircle, Plus, Key, Copy, CheckCircle2, X, AlertCircle } from "lucide-react";
 
 function generatePin() {
+  // Cryptographically secure 6-digit PIN. Uses rejection sampling over a
+  // 0..9_999_999 window so the modulo bias common to Math.random() is avoided.
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    const max = 1_000_000;
+    const limit = Math.floor(0x100000000 / max) * max;
+    const buf = new Uint32Array(1);
+    let n;
+    do {
+      crypto.getRandomValues(buf);
+      n = buf[0];
+    } while (n >= limit);
+    return String(n % max).padStart(6, "0");
+  }
+  // Fallback for environments without WebCrypto.
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
@@ -20,6 +34,7 @@ export default function Drivers() {
   const [saving, setSaving] = useState(false);
   const [newPin, setNewPin] = useState(null);
   const [copiedPin, setCopiedPin] = useState(false);
+  const [inviteError, setInviteError] = useState("");
 
   useEffect(() => { loadData(); }, []);
 
@@ -36,37 +51,51 @@ export default function Drivers() {
   const handleInvite = async () => {
     if (!form.email) return;
     setSaving(true);
-    const pin = generatePin();
-    await base44.users.inviteUser(form.email, "user");
-    // Poll until the invited user appears (up to 10s)
-    let invited = null;
-    for (let i = 0; i < 10; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      const all = await base44.entities.User.list();
-      invited = all.find(u => u.email === form.email);
-      if (invited) break;
+    setInviteError("");
+    try {
+      const pin = generatePin();
+      await base44.users.inviteUser(form.email, "driver");
+      // Poll until the invited user appears (up to 10s)
+      let invited = null;
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        const all = await base44.entities.User.list();
+        invited = all.find(u => u.email === form.email);
+        if (invited) break;
+      }
+      if (invited) {
+        await base44.entities.User.update(invited.id, {
+          driver_pin: pin,
+          is_driver: true,
+          role: "driver",
+          full_name: form.full_name || invited.full_name,
+          phone: form.phone,
+          cpf: form.cpf,
+          license_number: form.license_number,
+          license_category: form.license_category,
+          license_points: form.license_points ? Number(form.license_points) : undefined,
+        });
+      } else {
+        throw new Error("Convite enviado mas o motorista ainda não apareceu no sistema. Atualize a lista em alguns instantes.");
+      }
+      await loadData();
+      setNewPin(pin);
+    } catch (err) {
+      setInviteError(err?.message || "Falha ao cadastrar motorista.");
+    } finally {
+      setSaving(false);
     }
-    if (invited) {
-      await base44.entities.User.update(invited.id, {
-        driver_pin: pin,
-        is_driver: true,
-        phone: form.phone,
-        cpf: form.cpf,
-        license_number: form.license_number,
-        license_category: form.license_category,
-        license_points: form.license_points ? Number(form.license_points) : undefined,
-      });
-    }
-    await loadData();
-    setNewPin(pin);
-    setSaving(false);
   };
 
   const regeneratePin = async (driver) => {
-    const pin = generatePin();
-    await base44.entities.User.update(driver.id, { driver_pin: pin });
-    setNewPin(pin);
-    await loadData();
+    try {
+      const pin = generatePin();
+      await base44.entities.User.update(driver.id, { driver_pin: pin });
+      setNewPin(pin);
+      await loadData();
+    } catch (err) {
+      setInviteError(err?.message || "Falha ao regenerar PIN.");
+    }
   };
 
   const copyPin = (pin) => {
@@ -87,7 +116,7 @@ export default function Drivers() {
   return (
     <div className="space-y-6">
       <PageHeader title="Motoristas" subtitle={`${drivers.length} motoristas`}>
-        <Button onClick={() => { setShowForm(true); setNewPin(null); setForm({ email: "", full_name: "", phone: "" }); }}>
+        <Button onClick={() => { setShowForm(true); setNewPin(null); setInviteError(""); setForm({ email: "", full_name: "", phone: "", cpf: "", license_number: "", license_category: "", license_points: "" }); }}>
           <Plus className="w-4 h-4 mr-1.5" /> Cadastrar Motorista
         </Button>
       </PageHeader>
@@ -149,6 +178,12 @@ export default function Drivers() {
                 <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
                   Um convite será enviado para o e-mail e um PIN de acesso será gerado automaticamente para o app do motorista.
                 </p>
+                {inviteError && (
+                  <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span>{inviteError}</span>
+                  </div>
+                )}
                 <Button onClick={handleInvite} disabled={!form.email || saving} className="w-full">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Key className="w-4 h-4 mr-2" />}
                   {saving ? "Cadastrando..." : "Cadastrar e Gerar PIN"}

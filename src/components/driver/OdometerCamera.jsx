@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { Camera, Loader2, CheckCircle2, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 export default function OdometerCamera({ label, onCapture, existingUrl }) {
   const inputRef = useRef(null);

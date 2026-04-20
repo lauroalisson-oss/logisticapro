@@ -4,7 +4,7 @@ import KPICard from "../components/shared/KPICard";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import {
-  ShoppingCart, Truck, Route, AlertTriangle, Package, MapPin,
+  ShoppingCart, Truck, Route, AlertTriangle, MapPin,
   Clock, CheckCircle2, XCircle, Loader2
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";

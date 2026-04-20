@@ -4,12 +4,11 @@ import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import CapacityBar from "../components/shared/CapacityBar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, BoxSelect, Loader2, Trash2, Truck, AlertTriangle } from "lucide-react";
+import { Plus, BoxSelect, Loader2, Trash2, AlertTriangle } from "lucide-react";
 
 export default function Loads() {
   const [loads, setLoads] = useState([]);
@@ -228,8 +227,12 @@ export default function Loads() {
               </div>
             )}
 
-            <Button onClick={handleCreate} className="w-full" disabled={selectedOrders.length === 0 || !selectedVehicle}>
-              {isOverLimit ? "⚠ Criar Carga (Excedida)" : "Criar Carga"}
+            <Button
+              onClick={handleCreate}
+              className="w-full"
+              disabled={selectedOrders.length === 0 || !selectedVehicle || isOverLimit}
+            >
+              {isOverLimit ? "Capacidade excedida — ajuste pedidos ou veículo" : "Criar Carga"}
             </Button>
           </div>
         </DialogContent>

@@ -75,7 +75,7 @@ export default function Orders() {
     setOrders(o);
     setProducts(p);
     setVehicles(v);
-    setDrivers(u.filter(u => u.role === "driver"));
+    setDrivers(u.filter(x => x.role === "driver" || x.is_driver || x.driver_pin));
     setLoading(false);
   };
 

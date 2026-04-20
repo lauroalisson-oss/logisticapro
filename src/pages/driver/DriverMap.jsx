@@ -36,7 +36,7 @@ export default function DriverMap() {
     );
   }
 
-  const stops = route.stops.sort((a, b) => a.sequence - b.sequence);
+  const stops = [...route.stops].sort((a, b) => a.sequence - b.sequence);
   const center = [stops[0].latitude, stops[0].longitude];
 
   return (
