@@ -37,13 +37,14 @@ export default function Drivers() {
     if (!form.email) return;
     setSaving(true);
     const pin = generatePin();
-    await base44.users.inviteUser(form.email, "driver");
+    await base44.users.inviteUser(form.email, "user");
     setTimeout(async () => {
       const all = await base44.entities.User.list();
       const invited = all.find(u => u.email === form.email);
       if (invited) {
         await base44.entities.User.update(invited.id, {
           driver_pin: pin,
+          is_driver: true,
           phone: form.phone,
           cpf: form.cpf,
           license_number: form.license_number,
@@ -70,7 +71,7 @@ export default function Drivers() {
     setTimeout(() => setCopiedPin(false), 2000);
   };
 
-  const drivers = users.filter(u => u.role === "driver");
+  const drivers = users.filter(u => u.is_driver || u.driver_pin);
   const filtered = drivers.filter(d =>
     !search || d.full_name?.toLowerCase().includes(search.toLowerCase()) || d.email?.toLowerCase().includes(search.toLowerCase())
   );
