@@ -7,9 +7,12 @@ export default function RoleRouter() {
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const [isDriver, setIsDriver] = useState(false);
+
   useEffect(() => {
     base44.auth.me().then(user => {
-      setRole(user?.role || "driver");
+      setRole(user?.role || "user");
+      setIsDriver(!!(user?.is_driver || user?.driver_pin));
       setLoading(false);
     });
   }, []);
@@ -22,7 +25,7 @@ export default function RoleRouter() {
     );
   }
 
-  if (role === "driver") {
+  if (isDriver && role !== "admin") {
     return <Navigate to="/driver" replace />;
   }
 

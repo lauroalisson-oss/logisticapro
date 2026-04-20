@@ -38,22 +38,26 @@ export default function Drivers() {
     setSaving(true);
     const pin = generatePin();
     await base44.users.inviteUser(form.email, "user");
-    setTimeout(async () => {
+    // Poll until the invited user appears (up to 10s)
+    let invited = null;
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 1000));
       const all = await base44.entities.User.list();
-      const invited = all.find(u => u.email === form.email);
-      if (invited) {
-        await base44.entities.User.update(invited.id, {
-          driver_pin: pin,
-          is_driver: true,
-          phone: form.phone,
-          cpf: form.cpf,
-          license_number: form.license_number,
-          license_category: form.license_category,
-          license_points: form.license_points ? Number(form.license_points) : undefined,
-        });
-      }
-      await loadData();
-    }, 2000);
+      invited = all.find(u => u.email === form.email);
+      if (invited) break;
+    }
+    if (invited) {
+      await base44.entities.User.update(invited.id, {
+        driver_pin: pin,
+        is_driver: true,
+        phone: form.phone,
+        cpf: form.cpf,
+        license_number: form.license_number,
+        license_category: form.license_category,
+        license_points: form.license_points ? Number(form.license_points) : undefined,
+      });
+    }
+    await loadData();
     setNewPin(pin);
     setSaving(false);
   };
