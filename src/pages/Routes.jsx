@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useCompany } from "@/lib/CompanyContext";
+import { safeParallel } from "@/lib/safeLoad";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -69,11 +70,11 @@ export default function Routes() {
   useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
-    const [r, l, o, u] = await Promise.all([
-      base44.entities.Route.filter({ company_id: companyId }),
-      base44.entities.Load.filter({ company_id: companyId }),
-      base44.entities.Order.filter({ company_id: companyId }),
-      base44.entities.User.filter({ company_id: companyId }),
+    const [r, l, o, u] = await safeParallel([
+      () => base44.entities.Route.filter({ company_id: companyId }),
+      () => base44.entities.Load.filter({ company_id: companyId }),
+      () => base44.entities.Order.filter({ company_id: companyId }),
+      () => base44.entities.User.filter({ company_id: companyId }),
     ]);
     setRoutes(r); setLoads(l); setOrders(o); setUsers(u);
     setLoading(false);

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useCompany } from "@/lib/CompanyContext";
+import { safeParallel } from "@/lib/safeLoad";
 import KPICard from "../components/shared/KPICard";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
@@ -39,11 +40,11 @@ export default function Dashboard() {
   }, [companyId]);
 
   const loadData = async () => {
-    const [o, v, r, l] = await Promise.all([
-      base44.entities.Order.filter({ company_id: companyId }),
-      base44.entities.Vehicle.filter({ company_id: companyId }),
-      base44.entities.Route.filter({ company_id: companyId }),
-      base44.entities.DriverLocation.filter({ company_id: companyId, is_active: true }),
+    const [o, v, r, l] = await safeParallel([
+      () => base44.entities.Order.filter({ company_id: companyId }),
+      () => base44.entities.Vehicle.filter({ company_id: companyId }),
+      () => base44.entities.Route.filter({ company_id: companyId }),
+      () => base44.entities.DriverLocation.filter({ company_id: companyId, is_active: true }),
     ]);
     setOrders(o);
     setVehicles(v);

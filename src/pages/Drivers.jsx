@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useCompany } from "@/lib/CompanyContext";
 import { base44 } from "@/api/base44Client";
+import { safeParallel } from "@/lib/safeLoad";
 import PageHeader from "../components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,15 +102,15 @@ export default function Drivers() {
   useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
-    const [u, r] = await Promise.all([
-      base44.entities.User.filter({ company_id: companyId }),
-      base44.entities.Route.filter({ company_id: companyId }),
+    const [u, r] = await safeParallel([
+      () => base44.entities.User.filter({ company_id: companyId }),
+      () => base44.entities.Route.filter({ company_id: companyId }),
     ]);
     // Try to finish any pending invite whose user now exists.
     const pendingMap = readPending();
     const pendingEmails = Object.keys(pendingMap);
     const materialized = [];
-    if (pendingEmails.length > 0) {
+    if (pendingEmails.length > 0 && u.length > 0) {
       for (const email of pendingEmails) {
         const match = u.find(x => x.email?.toLowerCase() === email);
         if (!match) continue;
@@ -123,7 +124,14 @@ export default function Drivers() {
       }
     }
     // Refresh users if we changed anything so the card reflects new fields.
-    const freshUsers = materialized.length > 0 ? await base44.entities.User.list() : u;
+    let freshUsers = u;
+    if (materialized.length > 0) {
+      try {
+        freshUsers = await base44.entities.User.filter({ company_id: companyId });
+      } catch (err) {
+        console.error("Falha ao recarregar usuários:", err);
+      }
+    }
     setUsers(freshUsers);
     setRoutes(r);
     setPending(readPending());
@@ -149,9 +157,15 @@ export default function Drivers() {
       let invited = null;
       for (let i = 0; i < 5; i++) {
         await new Promise(r => setTimeout(r, 1000));
-        const all = await base44.entities.User.list();
-        invited = all.find(u => u.email?.toLowerCase() === emailKey.toLowerCase());
-        if (invited) break;
+        try {
+          const all = await base44.entities.User.filter({ company_id: companyId });
+          invited = all.find(u => u.email?.toLowerCase() === emailKey.toLowerCase());
+          if (invited) break;
+        } catch {
+          // If permissions block the listing, we just skip the happy-path
+          // poll and fall through to the deferred flow.
+          break;
+        }
       }
       if (invited) {
         const pin = generatePin();

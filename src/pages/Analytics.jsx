@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useCompany } from "@/lib/CompanyContext";
+import { safeParallel } from "@/lib/safeLoad";
 import PageHeader from "@/components/shared/PageHeader";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -59,11 +60,11 @@ export default function Analytics() {
 
   useEffect(() => {
     if (!companyId) return;
-    Promise.all([
-      base44.entities.Order.filter({ company_id: companyId }, "-created_date", 200),
-      base44.entities.Vehicle.filter({ company_id: companyId }),
-      base44.entities.Load.filter({ company_id: companyId }, "-created_date", 100),
-      base44.entities.Route.filter({ company_id: companyId }, "-created_date", 100),
+    safeParallel([
+      () => base44.entities.Order.filter({ company_id: companyId }, "-created_date", 200),
+      () => base44.entities.Vehicle.filter({ company_id: companyId }),
+      () => base44.entities.Load.filter({ company_id: companyId }, "-created_date", 100),
+      () => base44.entities.Route.filter({ company_id: companyId }, "-created_date", 100),
     ]).then(([o, v, l, r]) => {
       setOrders(o);
       setVehicles(v);

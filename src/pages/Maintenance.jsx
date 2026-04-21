@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useCompany } from "@/lib/CompanyContext";
 import { base44 } from "@/api/base44Client";
+import { safeParallel } from "@/lib/safeLoad";
 import PageHeader from "../components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,9 +41,9 @@ export default function Maintenance() {
   useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
-    const [m, v] = await Promise.all([
-      base44.entities.Maintenance.filter({ company_id: companyId }, "-scheduled_date"),
-      base44.entities.Vehicle.filter({ company_id: companyId }),
+    const [m, v] = await safeParallel([
+      () => base44.entities.Maintenance.filter({ company_id: companyId }, "-scheduled_date"),
+      () => base44.entities.Vehicle.filter({ company_id: companyId }),
     ]);
     // Auto-flag overdue
     const today = new Date().toISOString().split("T")[0];
