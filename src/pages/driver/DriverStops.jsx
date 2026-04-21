@@ -27,13 +27,36 @@ export default function DriverStops() {
   const updateStopStatus = async (stopIdx, status) => {
     if (!route) return;
     const stops = [...(route.stops || [])];
+    const targetStop = stops[stopIdx];
     stops[stopIdx] = {
-      ...stops[stopIdx],
+      ...targetStop,
       status,
-      delivery_notes: notes || stops[stopIdx].delivery_notes,
-      delivered_at: status === "delivered" ? new Date().toISOString() : stops[stopIdx].delivered_at,
+      delivery_notes: notes || targetStop.delivery_notes,
+      delivered_at: status === "delivered" ? new Date().toISOString() : targetStop.delivered_at,
     };
-    await base44.entities.Route.update(route.id, { stops });
+    try {
+      await base44.entities.Route.update(route.id, { stops });
+      // Cascade status to the underlying order so KPIs and dashboards
+      // stay consistent with what the driver sees in the field.
+      if (targetStop?.order_id) {
+        const orderStatus =
+          status === "delivered" ? "delivered" :
+          status === "not_delivered" ? "not_delivered" :
+          status === "issue" ? "issue" :
+          null;
+        if (orderStatus) {
+          await base44.entities.Order.update(targetStop.order_id, {
+            status: orderStatus,
+            delivered_at: status === "delivered" ? new Date().toISOString() : undefined,
+            delivery_notes: notes || undefined,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Falha ao atualizar parada/pedido:", err);
+      alert("Não foi possível atualizar a parada. Verifique sua conexão e tente novamente.");
+      return;
+    }
     setDialogOpen(false);
     setNotes("");
     setSelectedStop(null);
@@ -55,7 +78,7 @@ export default function DriverStops() {
     );
   }
 
-  const stops = (route.stops || []).sort((a, b) => a.sequence - b.sequence);
+  const stops = [...(route.stops || [])].sort((a, b) => a.sequence - b.sequence);
 
   return (
     <div className="p-4 space-y-3">

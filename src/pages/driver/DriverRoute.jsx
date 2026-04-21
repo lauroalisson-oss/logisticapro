@@ -16,7 +16,14 @@ export default function DriverRoute() {
   const [kmDeparturePhoto, setKmDeparturePhoto] = useState(null);
   const [kmArrivalPhoto, setKmArrivalPhoto] = useState(null);
   const [gpsActive, setGpsActive] = useState(false);
+  const [gpsError, setGpsError] = useState("");
   const locationInterval = useRef(null);
+  // Refs mirror the latest route/user so the interval never reads stale state.
+  const routeRef = useRef(null);
+  const userRef = useRef(null);
+
+  useEffect(() => { routeRef.current = route; }, [route]);
+  useEffect(() => { userRef.current = user; }, [user]);
 
   useEffect(() => {
     const verified = sessionStorage.getItem("driver_pin_verified") === "1";
@@ -24,7 +31,12 @@ export default function DriverRoute() {
     if (verified) loadRoute();
     else setLoading(false);
 
-    return () => { if (locationInterval.current) clearInterval(locationInterval.current); };
+    return () => {
+      if (locationInterval.current) {
+        clearInterval(locationInterval.current);
+        locationInterval.current = null;
+      }
+    };
   }, []);
 
   const handlePinSuccess = () => {
@@ -44,37 +56,55 @@ export default function DriverRoute() {
     setLoading(false);
   };
 
-  const activateGPS = (currentRoute, currentUser) => {
-    if (!navigator.geolocation) return;
+  const activateGPS = () => {
+    if (!navigator.geolocation) {
+      setGpsError("GPS não suportado neste dispositivo.");
+      return;
+    }
     setGpsActive(true);
-    const r = currentRoute || route;
-    const u = currentUser || user;
+    setGpsError("");
     const sendLocation = () => {
-      navigator.geolocation.getCurrentPosition(async (pos) => {
-        const totalStops = (r?.stops || []).length;
-        const delivered = (r?.stops || []).filter(s => s.status === "delivered").length;
-        const progress = totalStops > 0 ? Math.round((delivered / totalStops) * 100) : 0;
-        const existing = await base44.entities.DriverLocation.filter({ driver_email: u.email });
-        const data = {
-          driver_email: u.email,
-          driver_name: u.full_name,
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          vehicle_plate: r?.vehicle_plate || "",
-          route_id: r?.id || "",
-          route_status: r?.status || "",
-          route_progress: progress,
-          last_update: new Date().toISOString(),
-          is_active: true,
-        };
-        if (existing.length > 0) {
-          await base44.entities.DriverLocation.update(existing[0].id, data);
-        } else {
-          await base44.entities.DriverLocation.create(data);
-        }
-      });
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          try {
+            // Always read the freshest route/user from refs — the interval
+            // callback would otherwise capture whatever was in scope at setup.
+            const r = routeRef.current;
+            const u = userRef.current;
+            if (!u?.email) return;
+            const totalStops = (r?.stops || []).length;
+            const delivered = (r?.stops || []).filter(s => s.status === "delivered").length;
+            const progress = totalStops > 0 ? Math.round((delivered / totalStops) * 100) : 0;
+            const existing = await base44.entities.DriverLocation.filter({ driver_email: u.email });
+            const data = {
+              driver_email: u.email,
+              driver_name: u.full_name,
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              vehicle_plate: r?.vehicle_plate || "",
+              route_id: r?.id || "",
+              route_status: r?.status || "",
+              route_progress: progress,
+              last_update: new Date().toISOString(),
+              is_active: true,
+            };
+            if (existing.length > 0) {
+              await base44.entities.DriverLocation.update(existing[0].id, data);
+            } else {
+              await base44.entities.DriverLocation.create(data);
+            }
+          } catch (err) {
+            console.error("Falha ao enviar localização:", err);
+          }
+        },
+        (err) => {
+          setGpsError(`Erro de GPS: ${err.message}`);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      );
     };
     sendLocation();
+    if (locationInterval.current) clearInterval(locationInterval.current);
     locationInterval.current = setInterval(sendLocation, 30000);
   };
 
@@ -92,7 +122,7 @@ export default function DriverRoute() {
       km_departure_photo: kmDeparturePhoto,
     });
     // Auto-activate GPS
-    activateGPS(route, user);
+    activateGPS();
     setShowKmDeparture(false);
     loadRoute();
   };
@@ -200,10 +230,15 @@ export default function DriverRoute() {
         <p className="text-sm text-muted-foreground">{totalStops} parada(s) • {delivered} entregue(s)</p>
 
         {/* GPS indicator */}
-        {gpsActive && (
+        {gpsActive && !gpsError && (
           <div className="mt-2 flex items-center gap-1.5 text-xs text-green-600 font-medium">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             GPS ativo — localização sendo compartilhada
+          </div>
+        )}
+        {gpsError && (
+          <div className="mt-2 text-xs text-destructive font-medium">
+            ⚠ {gpsError}
           </div>
         )}
 
@@ -253,7 +288,7 @@ export default function DriverRoute() {
 
       {/* Stops Preview */}
       <div className="space-y-2">
-        {(route.stops || []).sort((a, b) => a.sequence - b.sequence).map((stop) => (
+        {[...(route.stops || [])].sort((a, b) => a.sequence - b.sequence).map((stop) => (
           <div key={stop.order_id} className={`p-3 rounded-lg border ${
             stop.status === "delivered" ? "bg-accent/5 border-accent/20" : "bg-card border-border"
           }`}>

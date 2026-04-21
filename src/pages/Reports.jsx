@@ -48,7 +48,7 @@ export default function Reports() {
       base44.entities.FuelRecord.list("-date"),
     ]);
     setOrders(o); setVehicles(v); setRoutes(r); setLoads(l);
-    setAlerts(a); setDrivers(u.filter(u => u.role === "driver"));
+    setAlerts(a); setDrivers(u.filter(x => x.role === "driver" || x.is_driver || x.driver_pin));
     setFuelRecords(f);
     setLoading(false);
   };

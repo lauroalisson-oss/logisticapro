@@ -6,9 +6,8 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer
 } from "recharts";
-import { TrendingUp, TrendingDown, Package, Truck, ShoppingCart, Users } from "lucide-react";
-import { format, subDays, parseISO, isAfter } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { TrendingUp, TrendingDown, Package, Truck, ShoppingCart } from "lucide-react";
+import { format, subDays, isAfter } from "date-fns";
 
 const COLORS = ["#1d6dc4", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
 

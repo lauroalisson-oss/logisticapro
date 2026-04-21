@@ -3,7 +3,6 @@ import { base44 } from "@/api/base44Client";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -22,13 +21,13 @@ async function osrmTrip(stops) {
   const res = await fetch(url);
   const data = await res.json();
   if (data.code !== "Ok") throw new Error("OSRM trip failed: " + data.code);
-  // Reorder stops according to OSRM waypoint order
-  const waypoints = data.waypoints; // each has waypoint_index = position in trip
-  const ordered = [...stops];
-  waypoints.forEach(wp => { ordered[wp.waypoint_index] = stops[wp.waypoint_index]; });
-  // Build ordered array by waypoint_index ascending
-  const sortedWp = [...waypoints].sort((a, b) => a.waypoint_index - b.waypoint_index);
-  const reordered = sortedWp.map(wp => stops[wp.waypoint_index]);
+  // OSRM returns data.waypoints[i] corresponding to the i-th input stop,
+  // with waypoint_index = the stop's position in the optimized trip.
+  // Place each input stop at its output position.
+  const reordered = new Array(stops.length);
+  data.waypoints.forEach((wp, inputIndex) => {
+    reordered[wp.waypoint_index] = stops[inputIndex];
+  });
   const totalDistanceKm = data.trips[0].distance / 1000;
   const totalDurationMin = data.trips[0].duration / 60;
   const geometry = data.trips[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
@@ -79,7 +78,7 @@ export default function Routes() {
   };
 
   const readyLoads = loads.filter(l => ["assembling", "ready"].includes(l.status));
-  const drivers = users.filter(u => u.role === "driver");
+  const drivers = users.filter(u => u.role === "driver" || u.is_driver || u.driver_pin);
 
   const handleCreate = async () => {
     const load = loads.find(l => l.id === selectedLoad);
@@ -114,7 +113,6 @@ export default function Routes() {
     let finalStops = rawStops;
     let totalDistanceKm = null;
     let totalDurationMin = null;
-    let geometry = null;
 
     if (rawStops.length >= 2) {
       const result = optimizeRoute
@@ -123,7 +121,6 @@ export default function Routes() {
       finalStops = result.stops.map((s, i) => ({ ...s, sequence: i + 1 }));
       totalDistanceKm = Math.round(result.totalDistanceKm * 10) / 10;
       totalDurationMin = Math.round(result.totalDurationMin);
-      geometry = result.geometry;
     }
 
     const route = {
