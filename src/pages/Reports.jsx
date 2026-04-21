@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useCompany } from "@/lib/CompanyContext";
 import { base44 } from "@/api/base44Client";
+import { safeParallel } from "@/lib/safeLoad";
 import PageHeader from "../components/shared/PageHeader";
 import KPICard from "../components/shared/KPICard";
 import { Input } from "@/components/ui/input";
@@ -40,14 +41,14 @@ export default function Reports() {
   useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
-    const [o, v, r, l, a, u, f] = await Promise.all([
-      base44.entities.Order.filter({ company_id: companyId }),
-      base44.entities.Vehicle.filter({ company_id: companyId }),
-      base44.entities.Route.filter({ company_id: companyId }),
-      base44.entities.Load.filter({ company_id: companyId }),
-      base44.entities.Alert.filter({ company_id: companyId }),
-      base44.entities.User.filter({ company_id: companyId }),
-      base44.entities.FuelRecord.filter({ company_id: companyId }, "-date"),
+    const [o, v, r, l, a, u, f] = await safeParallel([
+      () => base44.entities.Order.filter({ company_id: companyId }),
+      () => base44.entities.Vehicle.filter({ company_id: companyId }),
+      () => base44.entities.Route.filter({ company_id: companyId }),
+      () => base44.entities.Load.filter({ company_id: companyId }),
+      () => base44.entities.Alert.filter({ company_id: companyId }),
+      () => base44.entities.User.filter({ company_id: companyId }),
+      () => base44.entities.FuelRecord.filter({ company_id: companyId }, "-date"),
     ]);
     setOrders(o); setVehicles(v); setRoutes(r); setLoads(l);
     setAlerts(a); setDrivers(u.filter(x => x.role === "driver" || x.is_driver || x.driver_pin));

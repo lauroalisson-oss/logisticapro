@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useCompany } from "@/lib/CompanyContext";
+import { safeParallel } from "@/lib/safeLoad";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import CapacityBar from "../components/shared/CapacityBar";
@@ -26,11 +27,11 @@ export default function Loads() {
   useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
-    const [l, o, v, r] = await Promise.all([
-      base44.entities.Load.filter({ company_id: companyId }),
-      base44.entities.Order.filter({ company_id: companyId }),
-      base44.entities.Vehicle.filter({ company_id: companyId }),
-      base44.entities.Route.filter({ company_id: companyId }),
+    const [l, o, v, r] = await safeParallel([
+      () => base44.entities.Load.filter({ company_id: companyId }),
+      () => base44.entities.Order.filter({ company_id: companyId }),
+      () => base44.entities.Vehicle.filter({ company_id: companyId }),
+      () => base44.entities.Route.filter({ company_id: companyId }),
     ]);
     setLoads(l);
     setOrders(o);

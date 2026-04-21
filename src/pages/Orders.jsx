@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useCompany } from "@/lib/CompanyContext";
+import { safeParallel } from "@/lib/safeLoad";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -68,11 +69,11 @@ export default function Orders() {
   useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
-    const [o, p, v, u] = await Promise.all([
-      base44.entities.Order.filter({ company_id: companyId }),
-      base44.entities.Product.filter({ company_id: companyId }),
-      base44.entities.Vehicle.filter({ company_id: companyId }),
-      base44.entities.User.filter({ company_id: companyId }),
+    const [o, p, v, u] = await safeParallel([
+      () => base44.entities.Order.filter({ company_id: companyId }),
+      () => base44.entities.Product.filter({ company_id: companyId }),
+      () => base44.entities.Vehicle.filter({ company_id: companyId }),
+      () => base44.entities.User.filter({ company_id: companyId }),
     ]);
     setOrders(o);
     setProducts(p);
