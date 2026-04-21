@@ -14,22 +14,26 @@ export default function Loads() {
   const [loads, setLoads] = useState([]);
   const [orders, setOrders] = useState([]);
   const [vehicles, setVehicles] = useState([]);
+  const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedOrders, setSelectedOrders] = useState([]);
   const [selectedVehicle, setSelectedVehicle] = useState("");
+  const [deleteBlock, setDeleteBlock] = useState("");
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
-    const [l, o, v] = await Promise.all([
+    const [l, o, v, r] = await Promise.all([
       base44.entities.Load.list(),
       base44.entities.Order.list(),
       base44.entities.Vehicle.list(),
+      base44.entities.Route.list(),
     ]);
     setLoads(l);
     setOrders(o);
     setVehicles(v);
+    setRoutes(r);
     setLoading(false);
   };
 
@@ -99,13 +103,29 @@ export default function Loads() {
   };
 
   const handleDelete = async (id) => {
-    const load = loads.find(l => l.id === id);
-    if (load?.order_ids) {
-      for (const oid of load.order_ids) {
-        await base44.entities.Order.update(oid, { status: "pending" });
-      }
+    // Block the delete if a route already depends on this load — otherwise
+    // the route would be left pointing at a load_id/load_number that no
+    // longer exists and dashboards/filters would silently break.
+    const dependentRoute = routes.find(r => r.load_id === id);
+    if (dependentRoute) {
+      setDeleteBlock(`Esta carga está vinculada à rota ${dependentRoute.route_number}. Exclua a rota primeiro.`);
+      setTimeout(() => setDeleteBlock(""), 6000);
+      return;
     }
-    await base44.entities.Load.delete(id);
+    const load = loads.find(l => l.id === id);
+    try {
+      if (load?.order_ids) {
+        for (const oid of load.order_ids) {
+          await base44.entities.Order.update(oid, { status: "pending" });
+        }
+      }
+      await base44.entities.Load.delete(id);
+    } catch (err) {
+      console.error("Falha ao excluir carga:", err);
+      setDeleteBlock("Não foi possível excluir a carga. Tente novamente.");
+      setTimeout(() => setDeleteBlock(""), 6000);
+      return;
+    }
     loadData();
   };
 
@@ -125,6 +145,13 @@ export default function Loads() {
           <Plus className="w-4 h-4 mr-2" /> Montar Carga
         </Button>
       </PageHeader>
+
+      {deleteBlock && (
+        <div className="flex items-start gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>{deleteBlock}</span>
+        </div>
+      )}
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {loads.map(l => (

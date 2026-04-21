@@ -66,10 +66,14 @@ export default function Reports() {
 
   const driverStats = drivers.map(driver => {
     const dRoutes = filteredRoutes.filter(r => r.driver_email === driver.email && r.status === "completed");
+    // Prefer real odometer readings when available; fall back to the OSRM
+    // planned distance so the "KM Rodados" column isn't stuck at 0 for the
+    // current fleet that only captures departure/arrival photos.
     const totalKm = dRoutes.reduce((sum, r) => {
       const dep = r.km_departure || 0;
       const arr = r.km_arrival || 0;
-      return sum + (arr > dep ? arr - dep : 0);
+      if (arr > dep) return sum + (arr - dep);
+      return sum + (r.total_distance_km || 0);
     }, 0);
     const dAlerts = alerts.filter(a => {
       if (a.driver_email !== driver.email) return false;
@@ -274,7 +278,7 @@ export default function Reports() {
                   </div>
                   <div className="bg-muted/40 rounded-lg p-3 text-center">
                     <p className="text-xs text-muted-foreground">KM Rodados</p>
-                    <p className="text-2xl font-bold text-foreground">{driver.totalKm > 0 ? driver.totalKm.toLocaleString("pt-BR") : "—"}</p>
+                    <p className="text-2xl font-bold text-foreground">{driver.totalKm > 0 ? Math.round(driver.totalKm).toLocaleString("pt-BR") : "—"}</p>
                   </div>
                   <div className={`rounded-lg p-3 text-center ${driver.incidents.length > 0 ? "bg-red-50 border border-red-200" : "bg-muted/40"}`}>
                     <p className="text-xs text-muted-foreground">Ocorrências</p>
