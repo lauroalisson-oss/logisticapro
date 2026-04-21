@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { useCompany } from "@/lib/CompanyContext";
 import PageHeader from "@/components/shared/PageHeader";
 import { AlertTriangle, CheckCircle2, Clock, RefreshCw, MapPin, User, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ const TYPE_LABEL = { issue: "Ocorrência", not_delivered: "Não Entregue", delay
 const TYPE_COLOR = { issue: "text-red-600 bg-red-50 border-red-200", not_delivered: "text-orange-600 bg-orange-50 border-orange-200", delay: "text-yellow-600 bg-yellow-50 border-yellow-200" };
 
 export default function Notifications() {
+  const { companyId } = useCompany();
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("pending");
@@ -16,7 +18,11 @@ export default function Notifications() {
 
   useEffect(() => {
     base44.auth.me().then(setUser);
-    loadAlerts();
+    if (companyId) loadAlerts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
+
+  useEffect(() => {
 
     // Real-time subscription
     const unsub = base44.entities.Alert.subscribe((event) => {
@@ -33,7 +39,7 @@ export default function Notifications() {
   }, []);
 
   const loadAlerts = async () => {
-    const data = await base44.entities.Alert.list("-created_date", 100);
+    const data = await base44.entities.Alert.filter({ company_id: companyId }, "-created_date", 100);
     setAlerts(data);
     setLoading(false);
   };

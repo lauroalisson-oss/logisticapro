@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useCompany } from "@/lib/CompanyContext";
 import { base44 } from "@/api/base44Client";
 import PageHeader from "../components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ const emptyForm = {
 };
 
 export default function Maintenance() {
+  const { companyId } = useCompany();
   const [records, setRecords] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,12 +37,12 @@ export default function Maintenance() {
   const [filterVehicle, setFilterVehicle] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
     const [m, v] = await Promise.all([
-      base44.entities.Maintenance.list("-scheduled_date"),
-      base44.entities.Vehicle.list(),
+      base44.entities.Maintenance.filter({ company_id: companyId }, "-scheduled_date"),
+      base44.entities.Vehicle.filter({ company_id: companyId }),
     ]);
     // Auto-flag overdue
     const today = new Date().toISOString().split("T")[0];
@@ -74,6 +76,7 @@ export default function Maintenance() {
     const v = vehicles.find(v => v.id === form.vehicle_id);
     const data = {
       ...form,
+      company_id: companyId,
       vehicle_plate: v?.plate || "",
       vehicle_nickname: v?.nickname || "",
       km_at_service: form.km_at_service ? Number(form.km_at_service) : null,

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { useCompany } from "@/lib/CompanyContext";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ async function osrmRoute(stops) {
 }
 
 export default function Routes() {
+  const { companyId } = useCompany();
   const [routes, setRoutes] = useState([]);
   const [loads, setLoads] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -64,14 +66,14 @@ export default function Routes() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
     const [r, l, o, u] = await Promise.all([
-      base44.entities.Route.list(),
-      base44.entities.Load.list(),
-      base44.entities.Order.list(),
-      base44.entities.User.list(),
+      base44.entities.Route.filter({ company_id: companyId }),
+      base44.entities.Load.filter({ company_id: companyId }),
+      base44.entities.Order.filter({ company_id: companyId }),
+      base44.entities.User.filter({ company_id: companyId }),
     ]);
     setRoutes(r); setLoads(l); setOrders(o); setUsers(u);
     setLoading(false);
@@ -124,6 +126,7 @@ export default function Routes() {
     }
 
     const route = {
+      company_id: companyId,
       route_number: `ROT-${Date.now().toString(36).toUpperCase()}`,
       load_id: load.id,
       load_number: load.load_number,

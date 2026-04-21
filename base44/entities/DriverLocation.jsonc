@@ -2,6 +2,10 @@
   "name": "DriverLocation",
   "type": "object",
   "properties": {
+    "company_id": {
+      "type": "string",
+      "title": "Empresa"
+    },
     "driver_email": {
       "type": "string",
       "title": "Email do Motorista"

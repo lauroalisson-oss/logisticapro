@@ -4,21 +4,28 @@
   "properties": {
     "role": {
       "type": "string",
-      "title": "Perfil",
       "enum": [
         "admin",
-        "user",
-        "driver",
-        "dispatcher"
-      ]
+        "user"
+      ],
+      "default": "user"
     },
-    "phone": {
+    "company_id": {
       "type": "string",
-      "title": "Telefone"
+      "title": "Empresa"
+    },
+    "is_driver": {
+      "type": "boolean",
+      "title": "\u00c9 Motorista",
+      "default": false
     },
     "driver_pin": {
       "type": "string",
       "title": "PIN do Motorista"
+    },
+    "phone": {
+      "type": "string",
+      "title": "Telefone"
     },
     "cpf": {
       "type": "string",
@@ -26,27 +33,15 @@
     },
     "license_number": {
       "type": "string",
-      "title": "N\u00famero da Habilita\u00e7\u00e3o (CNH)"
+      "title": "N\u00famero CNH"
     },
     "license_category": {
       "type": "string",
-      "title": "Categoria CNH",
-      "enum": [
-        "A",
-        "B",
-        "C",
-        "D",
-        "E",
-        "AB",
-        "AC",
-        "AD",
-        "AE",
-        "ACC"
-      ]
+      "title": "Categoria CNH"
     },
     "license_points": {
       "type": "number",
-      "title": "Pontos na Carteira"
+      "title": "Pontos na CNH"
     }
   }
 }

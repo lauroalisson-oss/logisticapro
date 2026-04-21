@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useCompany } from "@/lib/CompanyContext";
 import { base44 } from "@/api/base44Client";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
@@ -17,17 +18,19 @@ L.Icon.Default.mergeOptions({
 });
 
 export default function Tracking() {
+  const { companyId } = useCompany();
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!companyId) return;
     loadLocations();
     const interval = setInterval(loadLocations, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [companyId]);
 
   const loadLocations = async () => {
-    const locs = await base44.entities.DriverLocation.filter({ is_active: true });
+    const locs = await base44.entities.DriverLocation.filter({ company_id: companyId, is_active: true });
     setLocations(locs);
     setLoading(false);
   };

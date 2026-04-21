@@ -2,6 +2,10 @@
   "name": "Alert",
   "type": "object",
   "properties": {
+    "company_id": {
+      "type": "string",
+      "title": "Empresa"
+    },
     "type": {
       "type": "string",
       "title": "Tipo",

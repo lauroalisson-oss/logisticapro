@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useCompany } from "@/lib/CompanyContext";
 import { base44 } from "@/api/base44Client";
 import PageHeader from "../components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -79,6 +80,7 @@ function buildDriverPayload(form) {
 }
 
 export default function Drivers() {
+  const { companyId } = useCompany();
   const [users, setUsers] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -93,12 +95,12 @@ export default function Drivers() {
   const [pending, setPending] = useState({});
   const [justMaterialized, setJustMaterialized] = useState([]);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
     const [u, r] = await Promise.all([
-      base44.entities.User.list(),
-      base44.entities.Route.list(),
+      base44.entities.User.filter({ company_id: companyId }),
+      base44.entities.Route.filter({ company_id: companyId }),
     ]);
     // Try to finish any pending invite whose user now exists.
     const pendingMap = readPending();
@@ -153,6 +155,7 @@ export default function Drivers() {
         await base44.entities.User.update(invited.id, {
           ...buildDriverPayload(form),
           driver_pin: pin,
+          company_id: companyId,
         });
         await loadData();
         setNewPin(pin);

@@ -2,6 +2,10 @@
   "name": "Order",
   "type": "object",
   "properties": {
+    "company_id": {
+      "type": "string",
+      "title": "Empresa"
+    },
     "order_number": {
       "type": "string",
       "title": "N\u00famero do Pedido"

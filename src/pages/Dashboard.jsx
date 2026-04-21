@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { useCompany } from "@/lib/CompanyContext";
 import KPICard from "../components/shared/KPICard";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
@@ -26,6 +27,7 @@ const truckIcon = new L.Icon({
 });
 
 export default function Dashboard() {
+  const { companyId } = useCompany();
   const [orders, setOrders] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [routes, setRoutes] = useState([]);
@@ -33,15 +35,15 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (companyId) loadData();
+  }, [companyId]);
 
   const loadData = async () => {
     const [o, v, r, l] = await Promise.all([
-      base44.entities.Order.list(),
-      base44.entities.Vehicle.list(),
-      base44.entities.Route.list(),
-      base44.entities.DriverLocation.filter({ is_active: true }),
+      base44.entities.Order.filter({ company_id: companyId }),
+      base44.entities.Vehicle.filter({ company_id: companyId }),
+      base44.entities.Route.filter({ company_id: companyId }),
+      base44.entities.DriverLocation.filter({ company_id: companyId, is_active: true }),
     ]);
     setOrders(o);
     setVehicles(v);

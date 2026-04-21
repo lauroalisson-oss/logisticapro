@@ -6,9 +6,11 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
+import { CompanyProvider, useCompany } from './lib/CompanyContext';
 import AppLayout from './components/layout/AppLayout';
 import DriverLayout from './components/layout/DriverLayout';
 import RoleRouter from './pages/RoleRouter';
+import CompanySetup from './pages/CompanySetup';
 import Dashboard from './pages/Dashboard';
 import Orders from './pages/Orders';
 import Products from './pages/Products';
@@ -28,10 +30,11 @@ import DriverMap from './pages/driver/DriverMap';
 import DriverProfile from './pages/driver/DriverProfile';
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user, isAuthenticated } = useAuth();
+  const { company, companyId, loading: companyLoading } = useCompany();
 
   // Show loading spinner while checking app public settings or auth
-  if (isLoadingPublicSettings || isLoadingAuth) {
+  if (isLoadingPublicSettings || isLoadingAuth || companyLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
@@ -48,6 +51,12 @@ const AuthenticatedApp = () => {
       navigateToLogin();
       return null;
     }
+  }
+
+  // If user is authenticated but has no company yet (and is not a driver), show setup
+  const isDriver = isAuthenticated && (user?.is_driver || user?.driver_pin);
+  if (isAuthenticated && !company && !isDriver) {
+    return <CompanySetup />;
   }
 
   // Render the main app
@@ -89,7 +98,9 @@ function App() {
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
         <Router>
-          <AuthenticatedApp />
+          <CompanyProvider>
+            <AuthenticatedApp />
+          </CompanyProvider>
         </Router>
         <Toaster />
       </QueryClientProvider>

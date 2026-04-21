@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { useCompany } from "@/lib/CompanyContext";
 import PageHeader from "@/components/shared/PageHeader";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -48,6 +49,7 @@ function KPI({ label, value, sub, icon: Icon, trend, color = "blue" }) {
 }
 
 export default function Analytics() {
+  const { companyId } = useCompany();
   const [orders, setOrders] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loads, setLoads] = useState([]);
@@ -56,11 +58,12 @@ export default function Analytics() {
   const [range, setRange] = useState(30);
 
   useEffect(() => {
+    if (!companyId) return;
     Promise.all([
-      base44.entities.Order.list("-created_date", 200),
-      base44.entities.Vehicle.list(),
-      base44.entities.Load.list("-created_date", 100),
-      base44.entities.Route.list("-created_date", 100),
+      base44.entities.Order.filter({ company_id: companyId }, "-created_date", 200),
+      base44.entities.Vehicle.filter({ company_id: companyId }),
+      base44.entities.Load.filter({ company_id: companyId }, "-created_date", 100),
+      base44.entities.Route.filter({ company_id: companyId }, "-created_date", 100),
     ]).then(([o, v, l, r]) => {
       setOrders(o);
       setVehicles(v);

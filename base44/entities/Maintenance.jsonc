@@ -1,0 +1,104 @@
+{
+  "name": "Maintenance",
+  "type": "object",
+  "properties": {
+    "company_id": {
+      "type": "string",
+      "title": "Empresa"
+    },
+    "vehicle_id": {
+      "type": "string",
+      "title": "Ve\u00edculo"
+    },
+    "vehicle_plate": {
+      "type": "string",
+      "title": "Placa"
+    },
+    "vehicle_nickname": {
+      "type": "string",
+      "title": "Nome do Ve\u00edculo"
+    },
+    "type": {
+      "type": "string",
+      "title": "Tipo",
+      "enum": [
+        "oil_change",
+        "tire",
+        "brake",
+        "filter",
+        "belt",
+        "revision",
+        "other"
+      ],
+      "default": "revision"
+    },
+    "description": {
+      "type": "string",
+      "title": "Descri\u00e7\u00e3o"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "scheduled",
+        "done",
+        "overdue"
+      ],
+      "default": "scheduled"
+    },
+    "scheduled_date": {
+      "type": "string",
+      "title": "Data Agendada",
+      "format": "date"
+    },
+    "done_date": {
+      "type": "string",
+      "title": "Data Realizada",
+      "format": "date"
+    },
+    "km_at_service": {
+      "type": "number",
+      "title": "KM na Manuten\u00e7\u00e3o"
+    },
+    "next_km": {
+      "type": "number",
+      "title": "Pr\u00f3xima Troca em KM"
+    },
+    "next_date": {
+      "type": "string",
+      "title": "Pr\u00f3xima Troca em Data",
+      "format": "date"
+    },
+    "parts": {
+      "type": "array",
+      "title": "Pe\u00e7as Trocadas",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unit_cost": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "total_cost": {
+      "type": "number",
+      "title": "Custo Total (R$)"
+    },
+    "notes": {
+      "type": "string",
+      "title": "Observa\u00e7\u00f5es"
+    }
+  },
+  "required": [
+    "vehicle_id",
+    "type",
+    "status"
+  ]
+}

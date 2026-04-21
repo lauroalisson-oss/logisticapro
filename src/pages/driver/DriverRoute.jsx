@@ -77,6 +77,7 @@ export default function DriverRoute() {
             const progress = totalStops > 0 ? Math.round((delivered / totalStops) * 100) : 0;
             const existing = await base44.entities.DriverLocation.filter({ driver_email: u.email });
             const data = {
+              company_id: u.company_id || "",
               driver_email: u.email,
               driver_name: u.full_name,
               latitude: pos.coords.latitude,

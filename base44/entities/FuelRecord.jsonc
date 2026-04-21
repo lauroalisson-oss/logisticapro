@@ -2,6 +2,10 @@
   "name": "FuelRecord",
   "type": "object",
   "properties": {
+    "company_id": {
+      "type": "string",
+      "title": "Empresa"
+    },
     "vehicle_id": {
       "type": "string",
       "title": "Ve\u00edculo"

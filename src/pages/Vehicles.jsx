@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { useCompany } from "@/lib/CompanyContext";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ const emptyVehicle = {
 };
 
 export default function Vehicles() {
+  const { companyId } = useCompany();
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -29,10 +31,10 @@ export default function Vehicles() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
 
-  useEffect(() => { loadVehicles(); }, []);
+  useEffect(() => { if (companyId) loadVehicles(); }, [companyId]);
 
   const loadVehicles = async () => {
-    const data = await base44.entities.Vehicle.list();
+    const data = await base44.entities.Vehicle.filter({ company_id: companyId });
     setVehicles(data);
     setLoading(false);
   };
@@ -41,7 +43,7 @@ export default function Vehicles() {
     if (editId) {
       await base44.entities.Vehicle.update(editId, form);
     } else {
-      await base44.entities.Vehicle.create(form);
+      await base44.entities.Vehicle.create({ ...form, company_id: companyId });
     }
     setDialogOpen(false);
     setForm(emptyVehicle);

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { useCompany } from "@/lib/CompanyContext";
 import PageHeader from "../components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ const emptyProduct = {
 };
 
 export default function Products() {
+  const { companyId } = useCompany();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -23,10 +25,10 @@ export default function Products() {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
 
-  useEffect(() => { loadProducts(); }, []);
+  useEffect(() => { if (companyId) loadProducts(); }, [companyId]);
 
   const loadProducts = async () => {
-    const data = await base44.entities.Product.list();
+    const data = await base44.entities.Product.filter({ company_id: companyId });
     setProducts(data);
     setLoading(false);
   };
@@ -46,7 +48,7 @@ export default function Products() {
     if (editId) {
       await base44.entities.Product.update(editId, data);
     } else {
-      await base44.entities.Product.create(data);
+      await base44.entities.Product.create({ ...data, company_id: companyId });
     }
     setDialogOpen(false);
     setForm(emptyProduct);

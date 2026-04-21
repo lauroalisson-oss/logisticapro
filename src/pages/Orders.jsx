@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
+import { useCompany } from "@/lib/CompanyContext";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,7 @@ const emptyOrder = {
 };
 
 export default function Orders() {
+  const { companyId } = useCompany();
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -63,14 +65,14 @@ export default function Orders() {
   const [geocodeStatus, setGeocodeStatus] = useState(null);
   const geocodeTimer = useRef(null);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
     const [o, p, v, u] = await Promise.all([
-      base44.entities.Order.list(),
-      base44.entities.Product.list(),
-      base44.entities.Vehicle.list(),
-      base44.entities.User.list(),
+      base44.entities.Order.filter({ company_id: companyId }),
+      base44.entities.Product.filter({ company_id: companyId }),
+      base44.entities.Vehicle.filter({ company_id: companyId }),
+      base44.entities.User.filter({ company_id: companyId }),
     ]);
     setOrders(o);
     setProducts(p);
@@ -199,7 +201,7 @@ export default function Orders() {
 
   // ---- Save ----
   const handleSave = async () => {
-    const data = { ...form };
+    const data = { ...form, company_id: companyId };
     if (!data.order_number) data.order_number = `PED-${Date.now().toString(36).toUpperCase()}`;
     if (editId) await base44.entities.Order.update(editId, data);
     else await base44.entities.Order.create(data);

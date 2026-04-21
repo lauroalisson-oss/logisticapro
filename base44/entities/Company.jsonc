@@ -1,0 +1,40 @@
+{
+  "name": "Company",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "title": "Nome da Empresa"
+    },
+    "cnpj": {
+      "type": "string",
+      "title": "CNPJ"
+    },
+    "owner_email": {
+      "type": "string",
+      "title": "Email do Dono"
+    },
+    "phone": {
+      "type": "string",
+      "title": "Telefone"
+    },
+    "address": {
+      "type": "string",
+      "title": "Endere\u00e7o"
+    },
+    "plan": {
+      "type": "string",
+      "title": "Plano",
+      "enum": [
+        "starter",
+        "pro",
+        "enterprise"
+      ],
+      "default": "starter"
+    }
+  },
+  "required": [
+    "name",
+    "owner_email"
+  ]
+}

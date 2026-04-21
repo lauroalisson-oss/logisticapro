@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { useCompany } from "@/lib/CompanyContext";
 import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import CapacityBar from "../components/shared/CapacityBar";
@@ -11,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, BoxSelect, Loader2, Trash2, AlertTriangle } from "lucide-react";
 
 export default function Loads() {
+  const { companyId } = useCompany();
   const [loads, setLoads] = useState([]);
   const [orders, setOrders] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -21,14 +23,14 @@ export default function Loads() {
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [deleteBlock, setDeleteBlock] = useState("");
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
     const [l, o, v, r] = await Promise.all([
-      base44.entities.Load.list(),
-      base44.entities.Order.list(),
-      base44.entities.Vehicle.list(),
-      base44.entities.Route.list(),
+      base44.entities.Load.filter({ company_id: companyId }),
+      base44.entities.Order.filter({ company_id: companyId }),
+      base44.entities.Vehicle.filter({ company_id: companyId }),
+      base44.entities.Route.filter({ company_id: companyId }),
     ]);
     setLoads(l);
     setOrders(o);
@@ -70,6 +72,7 @@ export default function Loads() {
     const totals = calcLoadTotals();
 
     const load = {
+      company_id: companyId,
       load_number: `CRG-${Date.now().toString(36).toUpperCase()}`,
       vehicle_id: vehicle.id,
       vehicle_plate: vehicle.plate,

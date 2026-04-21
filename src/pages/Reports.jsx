@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useCompany } from "@/lib/CompanyContext";
 import { base44 } from "@/api/base44Client";
 import PageHeader from "../components/shared/PageHeader";
 import KPICard from "../components/shared/KPICard";
@@ -15,6 +16,7 @@ const EXPECTED_KML = { van: 10, truck_small: 8, truck_medium: 6, truck_large: 4,
 const DEVIATION_THRESHOLD = 0.25; // 25% deviation triggers alert
 
 export default function Reports() {
+  const { companyId } = useCompany();
   const [tab, setTab] = useState("general");
   const [orders, setOrders] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -35,17 +37,17 @@ export default function Reports() {
   const [fuelForm, setFuelForm] = useState({ vehicle_id: "", date: "", km: "", liters: "", value: "", fuel_type: "diesel", notes: "" });
   const [savingFuel, setSavingFuel] = useState(false);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
     const [o, v, r, l, a, u, f] = await Promise.all([
-      base44.entities.Order.list(),
-      base44.entities.Vehicle.list(),
-      base44.entities.Route.list(),
-      base44.entities.Load.list(),
-      base44.entities.Alert.list(),
-      base44.entities.User.list(),
-      base44.entities.FuelRecord.list("-date"),
+      base44.entities.Order.filter({ company_id: companyId }),
+      base44.entities.Vehicle.filter({ company_id: companyId }),
+      base44.entities.Route.filter({ company_id: companyId }),
+      base44.entities.Load.filter({ company_id: companyId }),
+      base44.entities.Alert.filter({ company_id: companyId }),
+      base44.entities.User.filter({ company_id: companyId }),
+      base44.entities.FuelRecord.filter({ company_id: companyId }, "-date"),
     ]);
     setOrders(o); setVehicles(v); setRoutes(r); setLoads(l);
     setAlerts(a); setDrivers(u.filter(x => x.role === "driver" || x.is_driver || x.driver_pin));
@@ -112,6 +114,7 @@ export default function Reports() {
     const v = vehicles.find(v => v.id === fuelForm.vehicle_id);
     await base44.entities.FuelRecord.create({
       ...fuelForm,
+      company_id: companyId,
       km: Number(fuelForm.km),
       liters: Number(fuelForm.liters),
       value: Number(fuelForm.value),
