@@ -8,32 +8,19 @@
     },
     "duration_days": {
       "type": "number",
-      "title": "Duração (dias)"
+      "title": "Dura\u00e7\u00e3o (dias)"
     },
     "label": {
       "type": "string",
-      "title": "Descrição"
+      "title": "R\u00f3tulo"
     },
     "assigned_company_email": {
       "type": "string",
-      "title": "Email Autorizado"
+      "title": "Email da Empresa Atribu\u00edda"
     },
     "generated_by_email": {
       "type": "string",
       "title": "Gerado por"
-    },
-    "redeemed_by_company_id": {
-      "type": "string",
-      "title": "Empresa que resgatou"
-    },
-    "redeemed_by_company_name": {
-      "type": "string",
-      "title": "Nome da empresa que resgatou"
-    },
-    "redeemed_at": {
-      "type": "string",
-      "format": "date-time",
-      "title": "Resgatado em"
     },
     "status": {
       "type": "string",
@@ -41,9 +28,17 @@
       "enum": [
         "available",
         "redeemed",
-        "revoked"
+        "expired"
       ],
       "default": "available"
+    },
+    "redeemed_by_company_id": {
+      "type": "string",
+      "title": "Resgatado pela Empresa"
+    },
+    "redeemed_at": {
+      "type": "string",
+      "title": "Resgatado em"
     }
   },
   "required": [
