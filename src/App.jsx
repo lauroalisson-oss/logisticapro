@@ -1,16 +1,20 @@
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
 import { CompanyProvider, useCompany } from './lib/CompanyContext';
+import { isPlatformAdmin, companyHasActiveAccess } from './lib/platformAdmin';
 import AppLayout from './components/layout/AppLayout';
 import DriverLayout from './components/layout/DriverLayout';
 import RoleRouter from './pages/RoleRouter';
 import CompanySetup from './pages/CompanySetup';
+import CompanyAccessLock from './pages/CompanyAccessLock';
+import AdminCompanies from './pages/AdminCompanies';
+import AdminPins from './pages/AdminPins';
 import Dashboard from './pages/Dashboard';
 import Orders from './pages/Orders';
 import Products from './pages/Products';
@@ -53,10 +57,33 @@ const AuthenticatedApp = () => {
     }
   }
 
-  // If user is authenticated but has no company yet (and is not a driver), show setup
   const isDriver = isAuthenticated && (user?.is_driver || user?.driver_pin);
+  const isAdmin = isAuthenticated && isPlatformAdmin(user);
+
+  // Super-admin não precisa ter empresa e não passa pelo gate de PIN.
+  // Rotas de plataforma (/admin/*) + visão read-through pro painel normal.
+  if (isAdmin) {
+    return (
+      <Routes>
+        <Route path="/" element={<Navigate to="/admin/companies" replace />} />
+        <Route element={<AppLayout />}>
+          <Route path="/admin/companies" element={<AdminCompanies />} />
+          <Route path="/admin/pins" element={<AdminPins />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/admin/companies" replace />} />
+      </Routes>
+    );
+  }
+
+  // Usuário normal logado sem empresa (e não é motorista) — cadastro inicial.
   if (isAuthenticated && !company && !isDriver) {
     return <CompanySetup />;
+  }
+
+  // Empresa sem acesso ativo (aguardando PIN, expirada, suspensa): tela de lock.
+  // Motoristas passam direto — eles são gated pelo próprio PIN deles.
+  if (isAuthenticated && company && !isDriver && !companyHasActiveAccess(company)) {
+    return <CompanyAccessLock />;
   }
 
   // Render the main app

@@ -1,0 +1,54 @@
+{
+  "name": "AccessPin",
+  "type": "object",
+  "properties": {
+    "pin": {
+      "type": "string",
+      "title": "PIN de Acesso"
+    },
+    "duration_days": {
+      "type": "number",
+      "title": "Duração (dias)"
+    },
+    "label": {
+      "type": "string",
+      "title": "Descrição"
+    },
+    "assigned_company_email": {
+      "type": "string",
+      "title": "Email Autorizado"
+    },
+    "generated_by_email": {
+      "type": "string",
+      "title": "Gerado por"
+    },
+    "redeemed_by_company_id": {
+      "type": "string",
+      "title": "Empresa que resgatou"
+    },
+    "redeemed_by_company_name": {
+      "type": "string",
+      "title": "Nome da empresa que resgatou"
+    },
+    "redeemed_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Resgatado em"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "available",
+        "redeemed",
+        "revoked"
+      ],
+      "default": "available"
+    }
+  },
+  "required": [
+    "pin",
+    "duration_days",
+    "status"
+  ]
+}
