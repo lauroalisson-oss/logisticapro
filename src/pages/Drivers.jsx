@@ -54,7 +54,10 @@ export default function Drivers() {
     setInviteError("");
     try {
       const pin = generatePin();
-      await base44.users.inviteUser(form.email, "driver");
+      // inviteUser só aceita os papéis de plataforma "user" e "admin".
+      // O papel de aplicação ("driver") é gravado logo em seguida via
+      // User.update, que o schema da entidade já aceita no enum de role.
+      await base44.users.inviteUser(form.email, "user");
       // Poll until the invited user appears (up to 10s)
       let invited = null;
       for (let i = 0; i < 10; i++) {
