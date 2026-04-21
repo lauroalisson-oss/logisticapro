@@ -31,6 +31,26 @@
         "enterprise"
       ],
       "default": "starter"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status de Acesso",
+      "enum": [
+        "pending_pin",
+        "active",
+        "expired",
+        "suspended"
+      ],
+      "default": "pending_pin"
+    },
+    "access_expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Acesso expira em"
+    },
+    "last_pin_used": {
+      "type": "string",
+      "title": "\u00daltimo PIN usado"
     }
   },
   "required": [

@@ -33,9 +33,13 @@ export const CompanyProvider = ({ children }) => {
 
   const createCompany = async (data) => {
     const user = await base44.auth.me();
+    // Nova empresa começa travada aguardando o PIN que o super-admin vai
+    // fornecer — ela só vira "active" quando a empresa resgatar um PIN
+    // válido na tela CompanyAccessLock.
     const newCompany = await base44.entities.Company.create({
       ...data,
       owner_email: user.email,
+      status: "pending_pin",
     });
     // Save company_id on the current user
     await base44.auth.updateMe({ company_id: newCompany.id });
@@ -48,8 +52,14 @@ export const CompanyProvider = ({ children }) => {
     await init();
   };
 
+  // Aplica localmente uma atualização parcial vinda de um resgate de PIN
+  // sem precisar refazer a request ao base44 (a tela de lock já fez).
+  const patchCompany = (patch) => {
+    setCompany(prev => (prev ? { ...prev, ...patch } : prev));
+  };
+
   return (
-    <CompanyContext.Provider value={{ company, companyId, loading, createCompany, refreshCompany }}>
+    <CompanyContext.Provider value={{ company, companyId, loading, createCompany, refreshCompany, patchCompany }}>
       {children}
     </CompanyContext.Provider>
   );

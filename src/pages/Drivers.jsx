@@ -64,9 +64,12 @@ function removePending(email) {
 function buildDriverPayload(form) {
   // Strips empty strings so we don't overwrite fields the base44 account
   // already carries (e.g. a full_name set by the invitee on first login).
+  // Note: the User.role enum on base44 is limited to ("admin"|"user"), so
+  // we don't try to write role="driver" — the application-level driver
+  // identity is represented by is_driver=true and is picked up by the
+  // filters in Routes/Orders/Reports.
   const payload = {
     is_driver: true,
-    role: "driver",
   };
   if (form.full_name) payload.full_name = form.full_name;
   if (form.phone) payload.phone = form.phone;

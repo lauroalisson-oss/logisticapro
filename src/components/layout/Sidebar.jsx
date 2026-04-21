@@ -1,10 +1,13 @@
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Package, ShoppingCart, Truck, Users,
-  BoxSelect, Route, MapPin, BarChart3, Settings, LogOut, Menu, X, LineChart, Bell, Wrench
+  BoxSelect, Route, MapPin, BarChart3, Settings, LogOut, Menu, X, LineChart, Bell, Wrench,
+  Building2, Key, ShieldCheck
 } from "lucide-react";
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/AuthContext";
+import { isPlatformAdmin } from "@/lib/platformAdmin";
 
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
@@ -22,9 +25,17 @@ const navItems = [
   { label: "Configurações", icon: Settings, path: "/settings" },
 ];
 
+const adminNavItems = [
+  { label: "Empresas", icon: Building2, path: "/admin/companies" },
+  { label: "PINs de Acesso", icon: Key, path: "/admin/pins" },
+];
+
 export default function Sidebar() {
   const location = useLocation();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
+  const showAdmin = isPlatformAdmin(user);
+  const items = showAdmin ? adminNavItems : navItems;
 
   const handleLogout = () => {
     base44.auth.logout();
@@ -59,14 +70,21 @@ export default function Sidebar() {
             </div>
             <div>
               <h1 className="text-base font-bold text-sidebar-primary-foreground tracking-tight">LogiFlow</h1>
-              <p className="text-[10px] text-sidebar-foreground/60 uppercase tracking-widest">Logistics</p>
+              <p className="text-[10px] text-sidebar-foreground/60 uppercase tracking-widest">
+                {showAdmin ? "Plataforma" : "Logistics"}
+              </p>
             </div>
           </div>
+          {showAdmin && (
+            <div className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-sidebar-primary-foreground/80">
+              <ShieldCheck className="w-3 h-3" /> Super-admin
+            </div>
+          )}
         </div>
 
         {/* Nav */}
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
+          {items.map((item) => {
             const isActive = location.pathname === item.path || 
               (item.path !== "/" && location.pathname.startsWith(item.path));
             return (
