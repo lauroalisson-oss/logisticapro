@@ -30,7 +30,7 @@ export default function CompanyAccessLock() {
       if (!match) {
         const alreadyRedeemed = candidates.find(p => p.status === "redeemed");
         if (alreadyRedeemed) setError("Este PIN já foi utilizado.");
-        else if (candidates.find(p => p.status === "revoked")) setError("Este PIN foi revogado. Solicite um novo ao administrador.");
+        else if (candidates.find(p => p.status === "expired")) setError("Este PIN foi invalidado. Solicite um novo ao administrador.");
         else setError("PIN não encontrado. Verifique e tente novamente.");
         return;
       }
@@ -53,7 +53,6 @@ export default function CompanyAccessLock() {
       await base44.entities.AccessPin.update(match.id, {
         status: "redeemed",
         redeemed_by_company_id: company.id,
-        redeemed_by_company_name: company.name || "",
         redeemed_at: redeemedAt,
       });
 

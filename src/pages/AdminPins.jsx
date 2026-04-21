@@ -11,12 +11,12 @@ import { PIN_DURATIONS, generateAccessPin } from "@/lib/platformAdmin";
 const STATUS_COLOR = {
   available: "bg-green-100 text-green-700 border-green-200",
   redeemed: "bg-blue-100 text-blue-700 border-blue-200",
-  revoked: "bg-gray-100 text-gray-600 border-gray-200",
+  expired: "bg-gray-100 text-gray-600 border-gray-200",
 };
 const STATUS_LABEL = {
   available: "Disponível",
   redeemed: "Resgatado",
-  revoked: "Revogado",
+  expired: "Invalidado",
 };
 
 export default function AdminPins() {
@@ -80,13 +80,13 @@ export default function AdminPins() {
     }
   };
 
-  const handleRevoke = async (pin) => {
-    if (!confirm(`Revogar o PIN ${pin.pin}? Essa ação não pode ser desfeita.`)) return;
+  const handleInvalidate = async (pin) => {
+    if (!confirm(`Invalidar o PIN ${pin.pin}? Essa ação não pode ser desfeita.`)) return;
     try {
-      await base44.entities.AccessPin.update(pin.id, { status: "revoked" });
+      await base44.entities.AccessPin.update(pin.id, { status: "expired" });
       await loadData();
     } catch (err) {
-      alert(err?.message || "Falha ao revogar PIN.");
+      alert(err?.message || "Falha ao invalidar PIN.");
     }
   };
 
@@ -184,7 +184,7 @@ export default function AdminPins() {
 
       {/* Filtros */}
       <div className="flex gap-1 bg-secondary/50 p-1 rounded-lg w-fit">
-        {["all", "available", "redeemed", "revoked"].map(f => (
+        {["all", "available", "redeemed", "expired"].map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -198,6 +198,7 @@ export default function AdminPins() {
       <div className="grid md:grid-cols-2 gap-3">
         {filtered.map(p => {
           const assignedCompany = p.assigned_company_email ? companyByEmail(p.assigned_company_email) : null;
+          const redeemedCompany = p.redeemed_by_company_id ? companies.find(c => c.id === p.redeemed_by_company_id) : null;
           return (
             <div key={p.id} className="bg-card rounded-xl border border-border p-4 space-y-3">
               <div className="flex items-start justify-between">
@@ -219,7 +220,7 @@ export default function AdminPins() {
                 )}
                 {p.status === "redeemed" && (
                   <>
-                    <p className="flex items-center gap-1.5"><Building2 className="w-3 h-3" /> Usado por: {p.redeemed_by_company_name || "—"}</p>
+                    <p className="flex items-center gap-1.5"><Building2 className="w-3 h-3" /> Usado por: {redeemedCompany?.name || redeemedCompany?.owner_email || "—"}</p>
                     <p>Em: {p.redeemed_at ? new Date(p.redeemed_at).toLocaleString("pt-BR") : "—"}</p>
                   </>
                 )}
@@ -231,8 +232,8 @@ export default function AdminPins() {
                     <Button variant="outline" size="sm" className="flex-1" onClick={() => copyPin(p.pin)}>
                       {copied === p.pin ? <><CheckCircle2 className="w-3.5 h-3.5 mr-1 text-green-600" /> Copiado</> : <><Copy className="w-3.5 h-3.5 mr-1" /> Copiar</>}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleRevoke(p)} className="text-destructive hover:bg-destructive/10">
-                      <Ban className="w-3.5 h-3.5 mr-1" /> Revogar
+                    <Button variant="outline" size="sm" onClick={() => handleInvalidate(p)} className="text-destructive hover:bg-destructive/10">
+                      <Ban className="w-3.5 h-3.5 mr-1" /> Invalidar
                     </Button>
                   </>
                 )}

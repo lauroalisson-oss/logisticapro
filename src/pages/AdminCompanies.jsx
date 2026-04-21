@@ -94,12 +94,16 @@ export default function AdminCompanies() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const filtered = companies.filter(c =>
-    !search ||
-    c.name?.toLowerCase().includes(search.toLowerCase()) ||
-    c.owner_email?.toLowerCase().includes(search.toLowerCase()) ||
-    c.cnpj?.includes(search)
-  );
+  const filtered = companies.filter(c => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      c.name?.toLowerCase().includes(q) ||
+      c.owner_email?.toLowerCase().includes(q) ||
+      c.admin_email?.toLowerCase().includes(q) ||
+      c.cnpj?.includes(search)
+    );
+  });
 
   if (loading) return <div className="flex items-center justify-center h-96"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
 
@@ -154,7 +158,10 @@ export default function AdminCompanies() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold truncate">{c.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{c.owner_email}</p>
+                    <p className="text-xs text-muted-foreground truncate">Login: {c.owner_email}</p>
+                    {c.admin_email && c.admin_email.toLowerCase() !== (c.owner_email || "").toLowerCase() && (
+                      <p className="text-xs text-primary truncate">Admin resp.: {c.admin_email}</p>
+                    )}
                   </div>
                 </div>
                 <span className={`text-[10px] uppercase tracking-wide font-bold px-2 py-1 rounded border flex-shrink-0 ${meta.color}`}>

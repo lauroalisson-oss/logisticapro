@@ -1,15 +1,24 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCompany } from "@/lib/CompanyContext";
+import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Building2, Loader2 } from "lucide-react";
+import { Building2, Loader2, Mail, Info } from "lucide-react";
 
 export default function CompanySetup() {
   const { createCompany } = useCompany();
-  const [form, setForm] = useState({ name: "", cnpj: "", phone: "", address: "" });
+  const { user, logout } = useAuth();
+  const [form, setForm] = useState({ name: "", cnpj: "", phone: "", address: "", admin_email: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // Pré-preenche o email administrativo com o email de login. O admin pode
+  // substituir por um email diferente (ex: o email do sócio responsável)
+  // sem afetar qual conta faz login — esse campo é só identificação.
+  useEffect(() => {
+    if (user?.email) setForm(f => ({ ...f, admin_email: f.admin_email || user.email }));
+  }, [user?.email]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -17,7 +26,10 @@ export default function CompanySetup() {
     setSaving(true);
     setError("");
     try {
-      await createCompany(form);
+      await createCompany({
+        ...form,
+        admin_email: (form.admin_email || "").trim().toLowerCase() || user?.email,
+      });
       // CompanyProvider will update context; App will re-render naturally
     } catch (err) {
       setError(err?.message || "Erro ao criar empresa.");
@@ -27,7 +39,7 @@ export default function CompanySetup() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md space-y-4">
         <div className="bg-card rounded-2xl border border-border p-8 shadow-xl space-y-6">
           <div className="text-center space-y-2">
             <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto">
@@ -38,6 +50,24 @@ export default function CompanySetup() {
               Para começar, preencha os dados da sua empresa. Todos os seus dados ficarão isolados e seguros.
             </p>
           </div>
+
+          {/* Login email summary */}
+          {user?.email && (
+            <div className="flex items-start gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg text-xs">
+              <Mail className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-muted-foreground">Você está se cadastrando como:</p>
+                <p className="font-semibold font-mono">{user.email}</p>
+                <button
+                  type="button"
+                  onClick={() => logout()}
+                  className="text-[11px] text-primary hover:underline mt-1"
+                >
+                  Usar outra conta
+                </button>
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
@@ -55,6 +85,19 @@ export default function CompanySetup() {
                 onChange={e => setForm(f => ({ ...f, cnpj: e.target.value }))}
                 placeholder="00.000.000/0000-00"
               />
+            </div>
+            <div className="space-y-1">
+              <Label>Email do administrador responsável</Label>
+              <Input
+                type="email"
+                value={form.admin_email}
+                onChange={e => setForm(f => ({ ...f, admin_email: e.target.value }))}
+                placeholder="admin@empresa.com"
+              />
+              <p className="text-[11px] text-muted-foreground flex items-start gap-1">
+                <Info className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                <span>Pode ser diferente do email de login acima. Serve para identificar o admin responsável pela conta (ex: o diretor que recebe as faturas).</span>
+              </p>
             </div>
             <div className="space-y-1">
               <Label>Telefone</Label>

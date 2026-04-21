@@ -12,7 +12,11 @@
     },
     "owner_email": {
       "type": "string",
-      "title": "Email do Dono"
+      "title": "Email da Conta (login)"
+    },
+    "admin_email": {
+      "type": "string",
+      "title": "Email do Administrador Respons\u00e1vel"
     },
     "phone": {
       "type": "string",
