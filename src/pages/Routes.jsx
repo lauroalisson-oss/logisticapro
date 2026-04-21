@@ -150,7 +150,28 @@ export default function Routes() {
   };
 
   const handleDelete = async (id) => {
-    await base44.entities.Route.delete(id);
+    // Cascade the deletion so the load and its orders do not get stranded:
+    // without this, the load stays "ready" forever and its orders stay in
+    // "routing" — effectively orphaned.
+    const route = routes.find(r => r.id === id);
+    const load = route?.load_id ? loads.find(l => l.id === route.load_id) : null;
+    try {
+      if (load) {
+        await base44.entities.Load.update(load.id, { status: "assembling" });
+        for (const oid of (load.order_ids || [])) {
+          await base44.entities.Order.update(oid, { status: "pending" });
+        }
+      }
+      await base44.entities.Route.delete(id);
+    } catch (err) {
+      console.error("Falha ao excluir rota:", err);
+      alert("Não foi possível excluir a rota. Tente novamente.");
+      return;
+    }
+    if (mapRoute?.id === id) {
+      setMapRoute(null);
+      setMapGeometry(null);
+    }
     loadData();
   };
 
