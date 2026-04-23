@@ -17,8 +17,7 @@ export default function DriverRoute() {
   const [kmArrivalPhoto, setKmArrivalPhoto] = useState(null);
   const [gpsActive, setGpsActive] = useState(false);
   const [gpsError, setGpsError] = useState("");
-  const locationInterval = useRef(null);
-  // Refs mirror the latest route/user so the interval never reads stale state.
+  // Refs mirror the latest route/user so the watch callback never reads stale state.
   const routeRef = useRef(null);
   const userRef = useRef(null);
 
@@ -32,9 +31,13 @@ export default function DriverRoute() {
     else setLoading(false);
 
     return () => {
-      if (locationInterval.current) {
-        clearInterval(locationInterval.current);
-        locationInterval.current = null;
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
       }
     };
   }, []);
@@ -56,6 +59,26 @@ export default function DriverRoute() {
     setLoading(false);
   };
 
+  // Ref to store the watchPosition ID so we can clear it later
+  const watchIdRef = useRef(null);
+  const wakeLockRef = useRef(null);
+
+  const requestWakeLock = async () => {
+    try {
+      if ("wakeLock" in navigator) {
+        wakeLockRef.current = await navigator.wakeLock.request("screen");
+        // Re-acquire wake lock if released (e.g. tab becomes visible again)
+        document.addEventListener("visibilitychange", async () => {
+          if (document.visibilityState === "visible" && wakeLockRef.current === null) {
+            wakeLockRef.current = await navigator.wakeLock.request("screen").catch(() => null);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn("WakeLock não disponível:", e);
+    }
+  };
+
   const activateGPS = () => {
     if (!navigator.geolocation) {
       setGpsError("GPS não suportado neste dispositivo.");
@@ -63,50 +86,57 @@ export default function DriverRoute() {
     }
     setGpsActive(true);
     setGpsError("");
-    const sendLocation = () => {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          try {
-            // Always read the freshest route/user from refs — the interval
-            // callback would otherwise capture whatever was in scope at setup.
-            const r = routeRef.current;
-            const u = userRef.current;
-            if (!u?.email) return;
-            const totalStops = (r?.stops || []).length;
-            const delivered = (r?.stops || []).filter(s => s.status === "delivered").length;
-            const progress = totalStops > 0 ? Math.round((delivered / totalStops) * 100) : 0;
-            const existing = await base44.entities.DriverLocation.filter({ driver_email: u.email });
-            const data = {
-              company_id: u.company_id || "",
-              driver_email: u.email,
-              driver_name: u.full_name,
-              latitude: pos.coords.latitude,
-              longitude: pos.coords.longitude,
-              vehicle_plate: r?.vehicle_plate || "",
-              route_id: r?.id || "",
-              route_status: r?.status || "",
-              route_progress: progress,
-              last_update: new Date().toISOString(),
-              is_active: true,
-            };
-            if (existing.length > 0) {
-              await base44.entities.DriverLocation.update(existing[0].id, data);
-            } else {
-              await base44.entities.DriverLocation.create(data);
-            }
-          } catch (err) {
-            console.error("Falha ao enviar localização:", err);
-          }
-        },
-        (err) => {
-          setGpsError(`Erro de GPS: ${err.message}`);
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-      );
+
+    // Keep screen on so GPS continues in background
+    requestWakeLock();
+
+    const handlePosition = async (pos) => {
+      try {
+        const r = routeRef.current;
+        const u = userRef.current;
+        if (!u?.email) return;
+        const deliveryStops = (r?.stops || []).filter(s => !s._isDeparture);
+        const delivered = deliveryStops.filter(s => s.status === "delivered").length;
+        const progress = deliveryStops.length > 0 ? Math.round((delivered / deliveryStops.length) * 100) : 0;
+        const existing = await base44.entities.DriverLocation.filter({ driver_email: u.email });
+        const data = {
+          company_id: u.company_id || "",
+          driver_email: u.email,
+          driver_name: u.full_name,
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          vehicle_plate: r?.vehicle_plate || "",
+          route_id: r?.id || "",
+          route_status: r?.status || "",
+          route_progress: progress,
+          last_update: new Date().toISOString(),
+          is_active: true,
+        };
+        if (existing.length > 0) {
+          await base44.entities.DriverLocation.update(existing[0].id, data);
+        } else {
+          await base44.entities.DriverLocation.create(data);
+        }
+        setGpsError(""); // Clear any previous error on success
+      } catch (err) {
+        console.error("Falha ao enviar localização:", err);
+      }
     };
-    sendLocation();
-    if (locationInterval.current) clearInterval(locationInterval.current);
-    locationInterval.current = setInterval(sendLocation, 30000);
+
+    const handleError = (err) => {
+      setGpsError(`Erro de GPS: ${err.message}. Verifique as permissões.`);
+      // Don't stop watching — retry on next position event
+    };
+
+    // watchPosition continuously tracks location — works even when screen dims
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+    }
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      handlePosition,
+      handleError,
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 }
+    );
   };
 
   const handleStartRoute = async () => {
@@ -143,7 +173,14 @@ export default function DriverRoute() {
     if (existing.length > 0) {
       await base44.entities.DriverLocation.update(existing[0].id, { is_active: false });
     }
-    if (locationInterval.current) clearInterval(locationInterval.current);
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release().catch(() => {});
+      wakeLockRef.current = null;
+    }
     setGpsActive(false);
     setShowKmArrival(false);
     loadRoute();
