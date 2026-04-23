@@ -1,12 +1,37 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { useCompany } from "@/lib/CompanyContext";
 import PageHeader from "../components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { User, Building2, Save, Loader2, CheckCircle2, MapPin } from "lucide-react";
+import { User, Building2, Save, Loader2, CheckCircle2, MapPin, Search } from "lucide-react";
 import { maskPhone, maskCNPJ } from "@/lib/masks";
+import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+// Fix leaflet default icon
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+});
+
+function DraggableMarker({ position, onMove }) {
+  useMapEvents({
+    click(e) { onMove(e.latlng.lat, e.latlng.lng); },
+  });
+  if (!position) return null;
+  return (
+    <Marker
+      position={position}
+      draggable
+      eventHandlers={{ dragend: (e) => { const ll = e.target.getLatLng(); onMove(ll.lat, ll.lng); } }}
+    />
+  );
+}
 
 export default function Settings() {
   const { company, patchCompany } = useCompany();
@@ -26,6 +51,8 @@ export default function Settings() {
   const [departureLat, setDepartureLat] = useState(null);
   const [departureLng, setDepartureLng] = useState(null);
   const [departureConfirmed, setDepartureConfirmed] = useState(false);
+  const [departureResults, setDepartureResults] = useState([]);
+  const [showDepartureResults, setShowDepartureResults] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -67,23 +94,49 @@ export default function Settings() {
     if (!departureAddress.trim()) return;
     setGeocodingDeparture(true);
     setDepartureConfirmed(false);
+    setCompanyError("");
+    setShowDepartureResults(false);
     try {
+      // Try with countrycodes=br first, then without restriction
       const q = encodeURIComponent(departureAddress);
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`);
-      const data = await res.json();
+      const urls = [
+        `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=5&countrycodes=br&addressdetails=1`,
+        `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=5&addressdetails=1`,
+      ];
+      let data = [];
+      for (const url of urls) {
+        const res = await fetch(url, { headers: { "Accept-Language": "pt-BR" } });
+        data = await res.json();
+        if (data.length > 0) break;
+      }
       if (data.length > 0) {
-        setDepartureLat(parseFloat(data[0].lat));
-        setDepartureLng(parseFloat(data[0].lon));
-        setDepartureAddress(data[0].display_name);
-        setDepartureConfirmed(true);
+        if (data.length === 1) {
+          // Auto-select if only one result
+          setDepartureLat(parseFloat(data[0].lat));
+          setDepartureLng(parseFloat(data[0].lon));
+          setDepartureAddress(data[0].display_name);
+          setDepartureConfirmed(true);
+        } else {
+          setDepartureResults(data);
+          setShowDepartureResults(true);
+        }
       } else {
-        setCompanyError("Endereço de saída não encontrado. Tente um endereço mais completo.");
+        setCompanyError("Nenhum endereço encontrado. Tente incluir cidade e estado (ex: Rua XV de Novembro, 100, Cipó, BA).");
       }
     } catch {
-      setCompanyError("Erro ao geocodificar o endereço de saída.");
+      setCompanyError("Erro ao buscar o endereço. Verifique sua conexão.");
     } finally {
       setGeocodingDeparture(false);
     }
+  };
+
+  const selectDepartureResult = (item) => {
+    setDepartureLat(parseFloat(item.lat));
+    setDepartureLng(parseFloat(item.lon));
+    setDepartureAddress(item.display_name);
+    setDepartureConfirmed(true);
+    setShowDepartureResults(false);
+    setDepartureResults([]);
   };
 
   const handleSaveCompany = async () => {
@@ -198,7 +251,7 @@ export default function Settings() {
               </div>
 
               {/* Departure point */}
-              <div className="pt-2 border-t border-border space-y-2">
+              <div className="pt-2 border-t border-border space-y-3">
                 <Label className="flex items-center gap-1.5 text-sm font-semibold">
                   <MapPin className="w-4 h-4 text-primary" /> Ponto de Partida das Rotas
                 </Label>
@@ -206,17 +259,55 @@ export default function Settings() {
                 <div className="flex gap-2">
                   <Input
                     value={departureAddress}
-                    onChange={e => { setDepartureAddress(e.target.value); setDepartureConfirmed(false); setDepartureLat(null); setDepartureLng(null); }}
-                    placeholder="Ex: Rua das Indústrias, 100, São Paulo, SP"
+                    onChange={e => { setDepartureAddress(e.target.value); setDepartureConfirmed(false); setDepartureLat(null); setDepartureLng(null); setShowDepartureResults(false); }}
+                    placeholder="Ex: Avenida Sete de Setembro, 661, Cipó, BA"
+                    onKeyDown={e => e.key === "Enter" && handleGeocodeDeparture()}
                   />
-                  <Button type="button" variant="outline" onClick={handleGeocodeDeparture} disabled={geocodingDeparture || !departureAddress.trim()}>
-                    {geocodingDeparture ? <Loader2 className="w-4 h-4 animate-spin" /> : "Localizar"}
+                  <Button type="button" variant="outline" onClick={handleGeocodeDeparture} disabled={geocodingDeparture || !departureAddress.trim()} className="shrink-0">
+                    {geocodingDeparture ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Search className="w-4 h-4 mr-1" />Buscar</>}
                   </Button>
                 </div>
-                {departureConfirmed && departureLat && (
-                  <p className="text-xs text-green-600 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Localizado: {departureLat.toFixed(5)}, {departureLng.toFixed(5)}
-                  </p>
+
+                {/* Multiple results picker */}
+                {showDepartureResults && departureResults.length > 0 && (
+                  <div className="border border-border rounded-lg overflow-hidden bg-card shadow-sm">
+                    <p className="text-xs text-muted-foreground px-3 py-2 border-b border-border bg-muted/40">Selecione o endereço correto:</p>
+                    {departureResults.map((r, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => selectDepartureResult(r)}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-primary/5 border-b border-border last:border-0 transition-colors"
+                      >
+                        <span className="font-medium">{r.display_name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Confirmed + mini map */}
+                {departureConfirmed && departureLat && departureLng && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-green-600 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Localizado com sucesso. Arraste o marcador para ajustar a posição ou clique no mapa.
+                    </p>
+                    <div className="rounded-lg overflow-hidden border border-border" style={{ height: 220 }}>
+                      <MapContainer
+                        key={`${departureLat}-${departureLng}`}
+                        center={[departureLat, departureLng]}
+                        zoom={16}
+                        style={{ height: "100%", width: "100%" }}
+                        scrollWheelZoom={false}
+                      >
+                        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                        <DraggableMarker
+                          position={[departureLat, departureLng]}
+                          onMove={(lat, lng) => { setDepartureLat(lat); setDepartureLng(lng); }}
+                        />
+                      </MapContainer>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Coordenadas: {departureLat.toFixed(6)}, {departureLng.toFixed(6)}</p>
+                  </div>
                 )}
               </div>
             </div>
