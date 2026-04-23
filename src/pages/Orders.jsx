@@ -69,16 +69,29 @@ export default function Orders() {
   useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
-    const [o, p, v, u] = await safeParallel([
+    const [o, p, v, u, invites] = await safeParallel([
       () => base44.entities.Order.filter({ company_id: companyId }),
       () => base44.entities.Product.filter({ company_id: companyId }),
       () => base44.entities.Vehicle.filter({ company_id: companyId }),
       () => base44.entities.User.filter({ company_id: companyId }),
+      () => base44.entities.DriverInvite.filter({ company_id: companyId }),
     ]);
     setOrders(o);
     setProducts(p);
     setVehicles(v);
-    setDrivers(u.filter(x => x.role === "driver" || x.is_driver || x.driver_pin));
+
+    // Merge users that are drivers + activated driver invites
+    const userDrivers = u.filter(x => x.role === "driver" || x.is_driver || x.driver_pin);
+    const userEmails = new Set(u.map(x => x.email));
+    const inviteDrivers = (invites || [])
+      .filter(i => i.status === "activated" && !userEmails.has(i.email))
+      .map(i => ({ id: i.id, email: i.email, full_name: i.full_name || i.email, _fromInvite: true }));
+    // Also include pending invites so dispatcher can pre-assign
+    const pendingInviteDrivers = (invites || [])
+      .filter(i => !userEmails.has(i.email) && !inviteDrivers.find(x => x.email === i.email))
+      .map(i => ({ id: i.id, email: i.email, full_name: `${i.full_name || i.email} (pendente)`, _fromInvite: true }));
+
+    setDrivers([...userDrivers, ...inviteDrivers, ...pendingInviteDrivers]);
     setLoading(false);
   };
 
@@ -197,7 +210,9 @@ export default function Orders() {
 
   const handleDriverChange = (id) => {
     const d = drivers.find(d => d.id === id);
-    setForm(f => ({ ...f, driver_id: id, driver_name: d?.full_name || "" }));
+    const name = d?.full_name || d?.email || "";
+    // Remove "(pendente)" suffix when saving
+    setForm(f => ({ ...f, driver_id: id, driver_name: name.replace(" (pendente)", ""), driver_email: d?.email || "" }));
   };
 
   // ---- Save ----
