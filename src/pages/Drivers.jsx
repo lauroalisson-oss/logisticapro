@@ -184,9 +184,10 @@ export default function Drivers() {
         setNewPin(pin);
       } else {
         // Deferred case: store the form, tell the admin what to do next.
-        savePending(emailKey, form);
+        const pendingPin = generatePin();
+        savePending(emailKey, { ...form, company_id: companyId, driver_pin: pendingPin });
         setPending(readPending());
-        setInviteInfo(`Convite enviado para ${emailKey}. O motorista precisa acessar o e-mail, criar senha e fazer o primeiro login. Depois disso ele aparece aqui automaticamente — clique em "Gerar novo" no card dele para criar o PIN.`);
+        setInviteInfo(`Convite enviado para ${emailKey}. Quando o motorista fizer o primeiro login, a conta será ativada automaticamente e o PIN gerado.`);
       }
     } catch (err) {
       setInviteError(err?.message || "Falha ao cadastrar motorista.");

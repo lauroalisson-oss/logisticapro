@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -11,6 +12,7 @@ import { isPlatformAdmin, companyHasActiveAccess } from './lib/platformAdmin';
 import AppLayout from './components/layout/AppLayout';
 import DriverLayout from './components/layout/DriverLayout';
 import RoleRouter from './pages/RoleRouter';
+import DriverActivation from './pages/DriverActivation';
 import CompanySetup from './pages/CompanySetup';
 import CompanyAccessLock from './pages/CompanyAccessLock';
 import AdminCompanies from './pages/AdminCompanies';
@@ -33,9 +35,18 @@ import DriverStops from './pages/driver/DriverStops';
 import DriverMap from './pages/driver/DriverMap';
 import DriverProfile from './pages/driver/DriverProfile';
 
+const PENDING_KEY = "logisticapro:pending_driver_invites";
+function hasPendingDriverInvite(email) {
+  try {
+    const map = JSON.parse(localStorage.getItem(PENDING_KEY) || "{}");
+    return !!map[email?.toLowerCase()];
+  } catch { return false; }
+}
+
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user, isAuthenticated } = useAuth();
   const { company, companyId, loading: companyLoading } = useCompany();
+  const [driverActivated, setDriverActivated] = useState(false);
 
   // Show loading spinner while checking app public settings or auth
   if (isLoadingPublicSettings || isLoadingAuth || companyLoading) {
@@ -90,6 +101,12 @@ const AuthenticatedApp = () => {
         <Route path="*" element={<Navigate to="/driver" replace />} />
       </Routes>
     );
+  }
+
+  // Motorista convidado faz 1º login: ainda não tem is_driver, mas tem pending invite.
+  // Ativamos a conta direto, sem passar pelo CompanySetup.
+  if (isAuthenticated && !isDriver && !company && !driverActivated && hasPendingDriverInvite(user?.email)) {
+    return <DriverActivation user={user} onActivated={() => { setDriverActivated(true); window.location.reload(); }} />;
   }
 
   // Usuário normal logado sem empresa — cadastro inicial.
