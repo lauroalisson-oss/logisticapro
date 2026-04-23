@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useCompany } from "@/lib/CompanyContext";
 import { base44 } from "@/api/base44Client";
+import { maskCPF, maskPhone, maskLicense } from "@/lib/masks";
 import { safeParallel } from "@/lib/safeLoad";
 import PageHeader from "../components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -257,16 +258,16 @@ export default function Drivers() {
                   </div>
                   <div>
                     <Label>CPF</Label>
-                    <Input value={form.cpf} onChange={e => setForm(f => ({ ...f, cpf: e.target.value }))} placeholder="000.000.000-00" />
+                    <Input value={form.cpf} onChange={e => setForm(f => ({ ...f, cpf: maskCPF(e.target.value) }))} placeholder="000.000.000-00" maxLength={14} />
                   </div>
                   <div>
                     <Label>Telefone</Label>
-                    <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="(11) 99999-9999" />
+                    <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: maskPhone(e.target.value) }))} placeholder="(11) 9 9999-9999" maxLength={16} />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label>Nº Habilitação (CNH)</Label>
-                      <Input value={form.license_number} onChange={e => setForm(f => ({ ...f, license_number: e.target.value }))} placeholder="00000000000" />
+                      <Input value={form.license_number} onChange={e => setForm(f => ({ ...f, license_number: maskLicense(e.target.value) }))} placeholder="000000000" maxLength={9} />
                     </div>
                     <div>
                       <Label>Pontos na Carteira</Label>

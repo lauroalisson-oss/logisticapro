@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Building2, Loader2, Mail, Info } from "lucide-react";
+import { maskPhone, maskCNPJ } from "@/lib/masks";
 
 export default function CompanySetup() {
   const { createCompany } = useCompany();
@@ -82,8 +83,9 @@ export default function CompanySetup() {
               <Label>CNPJ</Label>
               <Input
                 value={form.cnpj}
-                onChange={e => setForm(f => ({ ...f, cnpj: e.target.value }))}
+                onChange={e => setForm(f => ({ ...f, cnpj: maskCNPJ(e.target.value) }))}
                 placeholder="00.000.000/0000-00"
+                maxLength={18}
               />
             </div>
             <div className="space-y-1">
@@ -103,8 +105,9 @@ export default function CompanySetup() {
               <Label>Telefone</Label>
               <Input
                 value={form.phone}
-                onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                placeholder="(11) 99999-9999"
+                onChange={e => setForm(f => ({ ...f, phone: maskPhone(e.target.value) }))}
+                placeholder="(11) 9 9999-9999"
+                maxLength={16}
               />
             </div>
             <div className="space-y-1">
