@@ -43,6 +43,22 @@ export default function Loads() {
   const pendingOrders = orders.filter(o => o.status === "pending");
   const availableVehicles = vehicles.filter(v => v.status === "available");
 
+  // Group pending orders by vehicle + delivery_date for smart suggestions
+  const orderGroups = (() => {
+    const groups = {};
+    pendingOrders.forEach(o => {
+      if (!o.vehicle_id || !o.delivery_date) return;
+      const key = `${o.vehicle_id}_${o.delivery_date}`;
+      if (!groups[key]) {
+        const vehicle = vehicles.find(v => v.id === o.vehicle_id);
+        groups[key] = { vehicle, date: o.delivery_date, orders: [] };
+      }
+      groups[key].orders.push(o);
+    });
+    // Only suggest groups with 2+ orders
+    return Object.values(groups).filter(g => g.orders.length >= 2);
+  })();
+
   const calcLoadTotals = () => {
     const selected = pendingOrders.filter(o => selectedOrders.includes(o.id));
     return {
@@ -195,6 +211,43 @@ export default function Loads() {
             <DialogTitle>Montar Nova Carga</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+
+            {/* Smart grouping suggestions */}
+            {orderGroups.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-primary">💡 Grupos sugeridos (mesmo veículo + data)</Label>
+                {orderGroups.map((group, idx) => {
+                  const totalW = group.orders.reduce((s, o) => s + (o.total_weight_kg || 0), 0);
+                  const totalV = group.orders.reduce((s, o) => s + (o.total_volume_m3 || 0), 0);
+                  const overW = group.vehicle && totalW > group.vehicle.max_weight_kg;
+                  const overV = group.vehicle && totalV > group.vehicle.max_volume_m3;
+                  return (
+                    <div key={idx} className={`flex items-center gap-3 p-3 rounded-lg border text-xs ${overW || overV ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
+                      <div className="flex-1">
+                        <p className="font-semibold text-sm">
+                          {group.vehicle?.nickname} ({group.vehicle?.plate}) — {group.date}
+                        </p>
+                        <p className="text-muted-foreground mt-0.5">
+                          {group.orders.length} pedidos • {totalW.toFixed(1)}kg de {group.vehicle?.max_weight_kg}kg max • {totalV.toFixed(3)}m³ de {group.vehicle?.max_volume_m3}m³ max
+                        </p>
+                        {(overW || overV) && (
+                          <p className="text-red-600 font-medium mt-0.5 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" /> Excede capacidade do veículo
+                          </p>
+                        )}
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => {
+                        setSelectedOrders(group.orders.map(o => o.id));
+                        if (group.vehicle) setSelectedVehicle(group.vehicle.id);
+                      }}>
+                        Selecionar
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <div>
               <Label className="text-sm font-semibold">Selecione os Pedidos Pendentes</Label>
               {pendingOrders.length === 0 ? (
@@ -207,6 +260,8 @@ export default function Loads() {
                       <div className="flex-1">
                         <span className="text-sm font-medium">{o.order_number}</span>
                         <span className="text-xs text-muted-foreground ml-2">{o.client_name}</span>
+                        {o.vehicle_nickname && <span className="text-xs text-primary ml-2">🚛 {o.vehicle_nickname}</span>}
+                        {o.delivery_date && <span className="text-xs text-muted-foreground ml-2">📅 {o.delivery_date}</span>}
                       </div>
                       <span className="text-xs text-muted-foreground">
                         {(o.total_weight_kg || 0).toFixed(1)}kg | {(o.total_volume_m3 || 0).toFixed(3)}m³
