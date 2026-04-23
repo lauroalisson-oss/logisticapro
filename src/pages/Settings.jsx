@@ -5,7 +5,7 @@ import PageHeader from "../components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { User, Building2, Save, Loader2, CheckCircle2, MapPin, Search } from "lucide-react";
+import { User, Building2, Save, Loader2, CheckCircle2, MapPin } from "lucide-react";
 import { maskPhone, maskCNPJ } from "@/lib/masks";
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
@@ -53,6 +53,7 @@ export default function Settings() {
   const [departureConfirmed, setDepartureConfirmed] = useState(false);
   const [departureResults, setDepartureResults] = useState([]);
   const [showDepartureResults, setShowDepartureResults] = useState(false);
+  const departureDebounceRef = useRef(null);
 
   useEffect(() => {
     loadUser();
@@ -90,15 +91,13 @@ export default function Settings() {
     setTimeout(() => setProfileSaved(false), 2500);
   };
 
-  const handleGeocodeDeparture = async () => {
-    if (!departureAddress.trim()) return;
+  const geocodeDepartureAddress = async (address) => {
+    if (!address || address.trim().length < 8) return;
     setGeocodingDeparture(true);
-    setDepartureConfirmed(false);
     setCompanyError("");
     setShowDepartureResults(false);
     try {
-      // Try with countrycodes=br first, then without restriction
-      const q = encodeURIComponent(departureAddress);
+      const q = encodeURIComponent(address);
       const urls = [
         `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=5&countrycodes=br&addressdetails=1`,
         `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=5&addressdetails=1`,
@@ -111,23 +110,33 @@ export default function Settings() {
       }
       if (data.length > 0) {
         if (data.length === 1) {
-          // Auto-select if only one result
           setDepartureLat(parseFloat(data[0].lat));
           setDepartureLng(parseFloat(data[0].lon));
-          setDepartureAddress(data[0].display_name);
           setDepartureConfirmed(true);
         } else {
           setDepartureResults(data);
           setShowDepartureResults(true);
+          // Auto-pick best result to show on map
+          setDepartureLat(parseFloat(data[0].lat));
+          setDepartureLng(parseFloat(data[0].lon));
+          setDepartureConfirmed(true);
         }
       } else {
-        setCompanyError("Nenhum endereço encontrado. Tente incluir cidade e estado (ex: Rua XV de Novembro, 100, Cipó, BA).");
+        setDepartureConfirmed(false);
       }
     } catch {
-      setCompanyError("Erro ao buscar o endereço. Verifique sua conexão.");
+      // silent
     } finally {
       setGeocodingDeparture(false);
     }
+  };
+
+  const handleDepartureAddressChange = (value) => {
+    setDepartureAddress(value);
+    setDepartureConfirmed(false);
+    setShowDepartureResults(false);
+    if (departureDebounceRef.current) clearTimeout(departureDebounceRef.current);
+    departureDebounceRef.current = setTimeout(() => geocodeDepartureAddress(value), 800);
   };
 
   const selectDepartureResult = (item) => {
@@ -256,16 +265,19 @@ export default function Settings() {
                   <MapPin className="w-4 h-4 text-primary" /> Ponto de Partida das Rotas
                 </Label>
                 <p className="text-xs text-muted-foreground">Endereço de onde os caminhões saem (base/depósito). Será usado como ponto inicial no cálculo de rotas.</p>
-                <div className="flex gap-2">
+                <div className="relative">
                   <Input
                     value={departureAddress}
-                    onChange={e => { setDepartureAddress(e.target.value); setDepartureConfirmed(false); setDepartureLat(null); setDepartureLng(null); setShowDepartureResults(false); }}
+                    onChange={e => handleDepartureAddressChange(e.target.value)}
                     placeholder="Ex: Avenida Sete de Setembro, 661, Cipó, BA"
-                    onKeyDown={e => e.key === "Enter" && handleGeocodeDeparture()}
+                    className="pr-8"
                   />
-                  <Button type="button" variant="outline" onClick={handleGeocodeDeparture} disabled={geocodingDeparture || !departureAddress.trim()} className="shrink-0">
-                    {geocodingDeparture ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Search className="w-4 h-4 mr-1" />Buscar</>}
-                  </Button>
+                  {geocodingDeparture && (
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground absolute right-2.5 top-2.5" />
+                  )}
+                  {departureConfirmed && !geocodingDeparture && (
+                    <CheckCircle2 className="w-4 h-4 text-green-500 absolute right-2.5 top-2.5" />
+                  )}
                 </div>
 
                 {/* Multiple results picker */}
@@ -285,15 +297,15 @@ export default function Settings() {
                   </div>
                 )}
 
-                {/* Confirmed + mini map */}
-                {departureConfirmed && departureLat && departureLng && (
-                  <div className="space-y-2">
+                {/* Map preview — shows as soon as lat/lng are available */}
+                {departureLat && departureLng && (
+                  <div className="space-y-1.5">
                     <p className="text-xs text-green-600 flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Localizado com sucesso. Arraste o marcador para ajustar a posição ou clique no mapa.
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Geolocalizado: {departureLat.toFixed(5)}, {departureLng.toFixed(5)}
                     </p>
                     <div className="rounded-lg overflow-hidden border border-border" style={{ height: 220 }}>
                       <MapContainer
-                        key={`${departureLat}-${departureLng}`}
+                        key={`${Math.round(departureLat * 1000)}-${Math.round(departureLng * 1000)}`}
                         center={[departureLat, departureLng]}
                         zoom={16}
                         style={{ height: "100%", width: "100%" }}
@@ -306,7 +318,7 @@ export default function Settings() {
                         />
                       </MapContainer>
                     </div>
-                    <p className="text-xs text-muted-foreground">Coordenadas: {departureLat.toFixed(6)}, {departureLng.toFixed(6)}</p>
+                    <p className="text-xs text-muted-foreground">Clique no mapa ou arraste o marcador para ajustar a posição.</p>
                   </div>
                 )}
               </div>
