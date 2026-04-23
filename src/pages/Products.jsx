@@ -40,10 +40,27 @@ export default function Products() {
     return f.volume_m3 || 0;
   };
 
+  const generateCategoryCode = (category, existingProducts) => {
+    // Abbreviate category: take first 3 letters of each word, max 5 chars, uppercase
+    const words = (category || "GERAL").trim().split(/\s+/);
+    let abbr = words.map(w => w.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase()).join("").slice(0, 5);
+    if (!abbr) abbr = "PROD";
+
+    // Count products in same company with same category prefix
+    const sameCategory = existingProducts.filter(p =>
+      p.internal_code && p.internal_code.startsWith(abbr)
+    );
+    const next = sameCategory.length + 1;
+    return `${abbr}${String(next).padStart(8 - abbr.length, "0")}`;
+  };
+
   const handleSave = async () => {
     const data = { ...form };
     if (data.calc_type === "unit") {
       data.volume_m3 = calcVolume(data);
+    }
+    if (!data.internal_code && !editId) {
+      data.internal_code = generateCategoryCode(data.category, products);
     }
     if (editId) {
       await base44.entities.Product.update(editId, data);
@@ -155,7 +172,17 @@ export default function Products() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Nome</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-              <div><Label>Código Interno</Label><Input value={form.internal_code} onChange={(e) => setForm({ ...form, internal_code: e.target.value })} /></div>
+              <div>
+                <Label>Código Interno</Label>
+                <Input
+                  value={form.internal_code}
+                  onChange={(e) => setForm({ ...form, internal_code: e.target.value })}
+                  placeholder={!editId ? "Auto por categoria" : ""}
+                />
+                {!editId && !form.internal_code && (
+                  <p className="text-[11px] text-muted-foreground mt-1">Gerado automaticamente se vazio</p>
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Categoria</Label><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></div>
