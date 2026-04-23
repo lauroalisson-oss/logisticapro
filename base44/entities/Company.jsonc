@@ -50,6 +50,18 @@
     "last_pin_used": {
       "type": "string",
       "title": "\u00daltimo PIN usado"
+    },
+    "departure_address": {
+      "type": "string",
+      "title": "Endere\u00e7o de Sa\u00edda das Rotas"
+    },
+    "departure_lat": {
+      "type": "number",
+      "title": "Latitude Ponto de Partida"
+    },
+    "departure_lng": {
+      "type": "number",
+      "title": "Longitude Ponto de Partida"
     }
   },
   "required": [

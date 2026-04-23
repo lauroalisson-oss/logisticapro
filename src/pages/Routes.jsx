@@ -50,7 +50,7 @@ async function osrmRoute(stops) {
 }
 
 export default function Routes() {
-  const { companyId } = useCompany();
+  const { companyId, company } = useCompany();
   const [routes, setRoutes] = useState([]);
   const [loads, setLoads] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -122,17 +122,50 @@ export default function Routes() {
       status: "pending",
     }));
 
+    // Departure point from company settings
+    const depLat = company?.departure_lat;
+    const depLng = company?.departure_lng;
+    const hasDeparture = depLat && depLng;
+
     let finalStops = rawStops;
     let totalDistanceKm = null;
     let totalDurationMin = null;
 
-    if (rawStops.length >= 2) {
-      const result = optimizeRoute
-        ? await osrmTrip(rawStops)
-        : await osrmRoute(rawStops);
-      finalStops = result.stops.map((s, i) => ({ ...s, sequence: i + 1 }));
-      totalDistanceKm = Math.round(result.totalDistanceKm * 10) / 10;
-      totalDurationMin = Math.round(result.totalDurationMin);
+    if (rawStops.length >= 1) {
+      if (hasDeparture) {
+        // Prepend departure as a fixed origin; OSRM optimizes the delivery stops
+        const departureStop = {
+          _isDeparture: true,
+          latitude: depLat,
+          longitude: depLng,
+          client_name: "Ponto de Partida",
+          address: company.departure_address || "Base",
+        };
+        if (optimizeRoute && rawStops.length >= 2) {
+          // Trip with source=first (departure fixed), optimize remaining
+          const allPoints = [departureStop, ...rawStops];
+          const result = await osrmTrip(allPoints);
+          // Remove the departure point (index 0 after reorder) from stored stops
+          finalStops = result.stops
+            .filter(s => !s._isDeparture)
+            .map((s, i) => ({ ...s, sequence: i + 1 }));
+          totalDistanceKm = Math.round(result.totalDistanceKm * 10) / 10;
+          totalDurationMin = Math.round(result.totalDurationMin);
+        } else {
+          const allPoints = [departureStop, ...rawStops];
+          const result = await osrmRoute(allPoints);
+          finalStops = rawStops.map((s, i) => ({ ...s, sequence: i + 1 }));
+          totalDistanceKm = Math.round(result.totalDistanceKm * 10) / 10;
+          totalDurationMin = Math.round(result.totalDurationMin);
+        }
+      } else if (rawStops.length >= 2) {
+        const result = optimizeRoute
+          ? await osrmTrip(rawStops)
+          : await osrmRoute(rawStops);
+        finalStops = result.stops.map((s, i) => ({ ...s, sequence: i + 1 }));
+        totalDistanceKm = Math.round(result.totalDistanceKm * 10) / 10;
+        totalDurationMin = Math.round(result.totalDurationMin);
+      }
     }
 
     const route = {
@@ -333,6 +366,18 @@ export default function Routes() {
                 </SelectContent>
               </Select>
             </div>
+
+            {!company?.departure_lat && (
+              <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-700">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>Ponto de partida não configurado. Acesse <strong>Configurações</strong> para definir o endereço base da empresa. A rota será calculada apenas entre as paradas.</span>
+              </div>
+            )}
+            {company?.departure_lat && (
+              <div className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+                📍 Saindo de: <strong>{company.departure_address || "Ponto configurado"}</strong>
+              </div>
+            )}
 
             <div className="flex items-center gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
               <input

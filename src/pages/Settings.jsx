@@ -5,7 +5,7 @@ import PageHeader from "../components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { User, Building2, Save, Loader2, CheckCircle2 } from "lucide-react";
+import { User, Building2, Save, Loader2, CheckCircle2, MapPin } from "lucide-react";
 import { maskPhone, maskCNPJ } from "@/lib/masks";
 
 export default function Settings() {
@@ -21,6 +21,11 @@ export default function Settings() {
   const [savingCompany, setSavingCompany] = useState(false);
   const [companySaved, setCompanySaved] = useState(false);
   const [companyError, setCompanyError] = useState("");
+  const [geocodingDeparture, setGeocodingDeparture] = useState(false);
+  const [departureAddress, setDepartureAddress] = useState("");
+  const [departureLat, setDepartureLat] = useState(null);
+  const [departureLng, setDepartureLng] = useState(null);
+  const [departureConfirmed, setDepartureConfirmed] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -35,6 +40,10 @@ export default function Settings() {
         address: company.address || "",
         admin_email: company.admin_email || company.owner_email || "",
       });
+      setDepartureAddress(company.departure_address || "");
+      setDepartureLat(company.departure_lat || null);
+      setDepartureLng(company.departure_lng || null);
+      if (company.departure_lat && company.departure_lng) setDepartureConfirmed(true);
     }
   }, [company]);
 
@@ -54,6 +63,29 @@ export default function Settings() {
     setTimeout(() => setProfileSaved(false), 2500);
   };
 
+  const handleGeocodeDeparture = async () => {
+    if (!departureAddress.trim()) return;
+    setGeocodingDeparture(true);
+    setDepartureConfirmed(false);
+    try {
+      const q = encodeURIComponent(departureAddress);
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`);
+      const data = await res.json();
+      if (data.length > 0) {
+        setDepartureLat(parseFloat(data[0].lat));
+        setDepartureLng(parseFloat(data[0].lon));
+        setDepartureAddress(data[0].display_name);
+        setDepartureConfirmed(true);
+      } else {
+        setCompanyError("Endereço de saída não encontrado. Tente um endereço mais completo.");
+      }
+    } catch {
+      setCompanyError("Erro ao geocodificar o endereço de saída.");
+    } finally {
+      setGeocodingDeparture(false);
+    }
+  };
+
   const handleSaveCompany = async () => {
     if (!company?.id) return;
     setSavingCompany(true);
@@ -66,6 +98,9 @@ export default function Settings() {
         phone: companyForm.phone.trim(),
         address: companyForm.address.trim(),
         admin_email: (companyForm.admin_email || "").trim().toLowerCase(),
+        departure_address: departureAddress,
+        departure_lat: departureLat,
+        departure_lng: departureLng,
       };
       await base44.entities.Company.update(company.id, patch);
       patchCompany(patch);
@@ -160,6 +195,29 @@ export default function Settings() {
               <div>
                 <Label>Endereço</Label>
                 <Input value={companyForm.address} onChange={e => setCompanyForm(f => ({ ...f, address: e.target.value }))} />
+              </div>
+
+              {/* Departure point */}
+              <div className="pt-2 border-t border-border space-y-2">
+                <Label className="flex items-center gap-1.5 text-sm font-semibold">
+                  <MapPin className="w-4 h-4 text-primary" /> Ponto de Partida das Rotas
+                </Label>
+                <p className="text-xs text-muted-foreground">Endereço de onde os caminhões saem (base/depósito). Será usado como ponto inicial no cálculo de rotas.</p>
+                <div className="flex gap-2">
+                  <Input
+                    value={departureAddress}
+                    onChange={e => { setDepartureAddress(e.target.value); setDepartureConfirmed(false); setDepartureLat(null); setDepartureLng(null); }}
+                    placeholder="Ex: Rua das Indústrias, 100, São Paulo, SP"
+                  />
+                  <Button type="button" variant="outline" onClick={handleGeocodeDeparture} disabled={geocodingDeparture || !departureAddress.trim()}>
+                    {geocodingDeparture ? <Loader2 className="w-4 h-4 animate-spin" /> : "Localizar"}
+                  </Button>
+                </div>
+                {departureConfirmed && departureLat && (
+                  <p className="text-xs text-green-600 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Localizado: {departureLat.toFixed(5)}, {departureLng.toFixed(5)}
+                  </p>
+                )}
               </div>
             </div>
 
