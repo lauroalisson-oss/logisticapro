@@ -131,30 +131,32 @@ export default function Routes() {
     let totalDistanceKm = null;
     let totalDurationMin = null;
 
+    // Departure stop — always saved as first stop in the route for reliable map display
+    const departureStop = hasDeparture ? {
+      _isDeparture: true,
+      sequence: 0,
+      status: "pending",
+      latitude: depLat,
+      longitude: depLng,
+      client_name: "🏭 Ponto de Partida",
+      address: company.departure_address || "Base",
+    } : null;
+
     if (rawStops.length >= 1) {
       if (hasDeparture) {
-        // Prepend departure as a fixed origin; OSRM optimizes the delivery stops
-        const departureStop = {
-          _isDeparture: true,
-          latitude: depLat,
-          longitude: depLng,
-          client_name: "Ponto de Partida",
-          address: company.departure_address || "Base",
-        };
+        const allPoints = [departureStop, ...rawStops];
         if (optimizeRoute && rawStops.length >= 2) {
-          // Trip with source=first (departure fixed), optimize remaining
-          const allPoints = [departureStop, ...rawStops];
           const result = await osrmTrip(allPoints);
-          // Remove the departure point (index 0 after reorder) from stored stops
-          finalStops = result.stops
+          // result.stops[0] is the departure (source=first), rest are delivery stops reordered
+          const deliveryStops = result.stops
             .filter(s => !s._isDeparture)
             .map((s, i) => ({ ...s, sequence: i + 1 }));
+          finalStops = [departureStop, ...deliveryStops];
           totalDistanceKm = Math.round(result.totalDistanceKm * 10) / 10;
           totalDurationMin = Math.round(result.totalDurationMin);
         } else {
-          const allPoints = [departureStop, ...rawStops];
           const result = await osrmRoute(allPoints);
-          finalStops = rawStops.map((s, i) => ({ ...s, sequence: i + 1 }));
+          finalStops = [departureStop, ...rawStops.map((s, i) => ({ ...s, sequence: i + 1 }))];
           totalDistanceKm = Math.round(result.totalDistanceKm * 10) / 10;
           totalDurationMin = Math.round(result.totalDurationMin);
         }
@@ -224,15 +226,12 @@ export default function Routes() {
   const openMapRoute = async (r) => {
     setMapRoute(r);
     setMapGeometry(null);
-    // Include departure point if configured
-    const stopsWithCoords = (r.stops || []).filter(s => s.latitude && s.longitude);
-    const depLat = company?.departure_lat;
-    const depLng = company?.departure_lng;
-    const allPoints = depLat && depLng
-      ? [{ latitude: depLat, longitude: depLng }, ...stopsWithCoords]
-      : stopsWithCoords;
-    if (allPoints.length >= 2) {
-      const result = await osrmRoute(allPoints);
+    // All stops (including departure saved as first stop) sorted by sequence
+    const allStops = (r.stops || [])
+      .filter(s => s.latitude && s.longitude)
+      .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+    if (allStops.length >= 2) {
+      const result = await osrmRoute(allStops);
       setMapGeometry(result.geometry);
     }
   };
@@ -281,8 +280,8 @@ export default function Routes() {
 
           <div className="grid lg:grid-cols-2 gap-4">
             {filtered.map(r => {
-              const totalStops = (r.stops || []).length;
-              const deliveredStops = (r.stops || []).filter(s => s.status === "delivered").length;
+              const totalStops = (r.stops || []).filter(s => !s._isDeparture).length;
+              const deliveredStops = (r.stops || []).filter(s => !s._isDeparture && s.status === "delivered").length;
               const progress = totalStops > 0 ? Math.round((deliveredStops / totalStops) * 100) : 0;
               return (
                 <div key={r.id} className="bg-card rounded-xl border border-border p-5">
@@ -430,53 +429,43 @@ export default function Routes() {
               </p>
             )}
           </DialogHeader>
-          {mapRoute && (
-            <div className="h-96 rounded-lg overflow-hidden">
-              <MapContainer
-                center={
-                  company?.departure_lat && company?.departure_lng
-                    ? [company.departure_lat, company.departure_lng]
-                    : mapRoute.stops?.length > 0
-                    ? [mapRoute.stops[0].latitude, mapRoute.stops[0].longitude]
-                    : [-23.55, -46.63]
-                }
-                zoom={10}
-                style={{ height: "100%", width: "100%" }}
-              >
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                {/* Departure point marker */}
-                {company?.departure_lat && company?.departure_lng && (
-                  <Marker position={[company.departure_lat, company.departure_lng]}>
-                    <Popup>
-                      <strong>🏭 Ponto de Partida</strong><br />
-                      {company.departure_address || "Base"}
-                    </Popup>
-                  </Marker>
-                )}
-                {(mapRoute.stops || []).map((stop, idx) => (
-                  <Marker key={idx} position={[stop.latitude, stop.longitude]}>
-                    <Popup>
-                      <strong>#{stop.sequence} {stop.client_name}</strong><br />
-                      {stop.address}<br />
-                      <StatusBadge status={stop.status} />
-                    </Popup>
-                  </Marker>
-                ))}
-                {/* Real road geometry if available, otherwise straight line */}
-                {mapGeometry && mapGeometry.length > 1 && (
-                  <Polyline positions={mapGeometry} color="hsl(213, 94%, 45%)" weight={4} />
-                )}
-                {!mapGeometry && mapRoute.stops?.length > 1 && (
-                  <Polyline
-                    positions={mapRoute.stops.map(s => [s.latitude, s.longitude])}
-                    color="hsl(213, 94%, 45%)"
-                    weight={3}
-                    dashArray="6,6"
-                  />
-                )}
-              </MapContainer>
-            </div>
-          )}
+          {mapRoute && (() => {
+            const sortedStops = (mapRoute.stops || [])
+              .filter(s => s.latitude && s.longitude)
+              .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+            const firstStop = sortedStops[0];
+            return (
+              <div className="h-96 rounded-lg overflow-hidden">
+                <MapContainer
+                  center={firstStop ? [firstStop.latitude, firstStop.longitude] : [-23.55, -46.63]}
+                  zoom={10}
+                  style={{ height: "100%", width: "100%" }}
+                >
+                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  {sortedStops.map((stop, idx) => (
+                    <Marker key={idx} position={[stop.latitude, stop.longitude]}>
+                      <Popup>
+                        <strong>{stop._isDeparture ? "🏭 Ponto de Partida" : `#${stop.sequence} ${stop.client_name}`}</strong><br />
+                        {stop.address}
+                        {!stop._isDeparture && <><br /><StatusBadge status={stop.status} /></>}
+                      </Popup>
+                    </Marker>
+                  ))}
+                  {mapGeometry && mapGeometry.length > 1 && (
+                    <Polyline positions={mapGeometry} color="hsl(213, 94%, 45%)" weight={4} />
+                  )}
+                  {!mapGeometry && sortedStops.length > 1 && (
+                    <Polyline
+                      positions={sortedStops.map(s => [s.latitude, s.longitude])}
+                      color="hsl(213, 94%, 45%)"
+                      weight={3}
+                      dashArray="6,6"
+                    />
+                  )}
+                </MapContainer>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>
