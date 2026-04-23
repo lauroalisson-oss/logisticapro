@@ -101,9 +101,14 @@ export default function Drivers() {
 
   useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
+  const fetchUsers = async () => {
+    const res = await base44.functions.invoke('getCompanyDrivers', { company_id: companyId });
+    return res.data?.users || [];
+  };
+
   const loadData = async () => {
     const [u, r] = await safeParallel([
-      () => base44.entities.User.filter({ company_id: companyId }),
+      () => fetchUsers(),
       () => base44.entities.Route.filter({ company_id: companyId }),
     ]);
     // Try to finish any pending invite whose user now exists.
@@ -127,7 +132,7 @@ export default function Drivers() {
     let freshUsers = u;
     if (materialized.length > 0) {
       try {
-        freshUsers = await base44.entities.User.filter({ company_id: companyId });
+        freshUsers = await fetchUsers();
       } catch (err) {
         console.error("Falha ao recarregar usuários:", err);
       }
@@ -158,7 +163,7 @@ export default function Drivers() {
       for (let i = 0; i < 5; i++) {
         await new Promise(r => setTimeout(r, 1000));
         try {
-          const all = await base44.entities.User.filter({ company_id: companyId });
+          const all = await fetchUsers();
           invited = all.find(u => u.email?.toLowerCase() === emailKey.toLowerCase());
           if (invited) break;
         } catch {
