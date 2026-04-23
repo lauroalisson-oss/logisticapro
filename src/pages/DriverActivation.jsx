@@ -3,23 +3,6 @@ import { base44 } from "@/api/base44Client";
 import { Loader2, CheckCircle2, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const PENDING_KEY = "logisticapro:pending_driver_invites";
-
-function readPending() {
-  try {
-    const raw = localStorage.getItem(PENDING_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
-}
-
-function removePending(email) {
-  try {
-    const map = readPending();
-    delete map[email.toLowerCase()];
-    localStorage.setItem(PENDING_KEY, JSON.stringify(map));
-  } catch {}
-}
-
 export default function DriverActivation({ user, onActivated }) {
   const [status, setStatus] = useState("activating"); // activating | done | error
   const [pin, setPin] = useState(null);
@@ -30,29 +13,34 @@ export default function DriverActivation({ user, onActivated }) {
 
   const activate = async () => {
     try {
-      const pending = readPending();
-      const data = pending[user.email?.toLowerCase()];
+      // Fetch the pending invite from the DB (works on any device)
+      const res = await base44.functions.invoke('getDriverInvite', {});
+      const invite = res.data?.invite;
 
-      // Build update payload
       const payload = {
         is_driver: true,
-        driver_pin: data?.driver_pin || generatePin(),
+        driver_pin: invite?.driver_pin || generatePin(),
       };
-      if (data?.full_name) payload.full_name = data.full_name;
-      if (data?.phone) payload.phone = data.phone;
-      if (data?.cpf) payload.cpf = data.cpf;
-      if (data?.license_number) payload.license_number = data.license_number;
-      if (data?.license_category) payload.license_category = data.license_category;
-      if (data?.license_points) payload.license_points = Number(data.license_points);
-      if (data?.company_id) payload.company_id = data.company_id;
+      if (invite?.full_name) payload.full_name = invite.full_name;
+      if (invite?.phone) payload.phone = invite.phone;
+      if (invite?.cpf) payload.cpf = invite.cpf;
+      if (invite?.license_number) payload.license_number = invite.license_number;
+      if (invite?.license_category) payload.license_category = invite.license_category;
+      if (invite?.license_points) payload.license_points = Number(invite.license_points);
+      if (invite?.company_id) payload.company_id = invite.company_id;
 
+      // Apply to user account
       await base44.auth.updateMe(payload);
-      removePending(user.email);
+
+      // Mark invite as activated
+      if (invite?.id) {
+        await base44.entities.DriverInvite.update(invite.id, { status: 'activated' });
+      }
+
       setPin(payload.driver_pin);
       setStatus("done");
 
-      // Give the user 2 seconds to see the success screen then redirect
-      setTimeout(() => onActivated(), 2500);
+      setTimeout(() => onActivated(), 3000);
     } catch (err) {
       console.error("Falha na ativação:", err);
       setStatus("error");

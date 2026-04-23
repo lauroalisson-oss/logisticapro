@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import { base44 } from '@/api/base44Client';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
 import { CompanyProvider, useCompany } from './lib/CompanyContext';
@@ -35,21 +36,26 @@ import DriverStops from './pages/driver/DriverStops';
 import DriverMap from './pages/driver/DriverMap';
 import DriverProfile from './pages/driver/DriverProfile';
 
-const PENDING_KEY = "logisticapro:pending_driver_invites";
-function hasPendingDriverInvite(email) {
-  try {
-    const map = JSON.parse(localStorage.getItem(PENDING_KEY) || "{}");
-    return !!map[email?.toLowerCase()];
-  } catch { return false; }
-}
-
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user, isAuthenticated } = useAuth();
   const { company, companyId, loading: companyLoading } = useCompany();
-  const [driverActivated, setDriverActivated] = useState(false);
+  const [pendingInvite, setPendingInvite] = useState(null); // null=unchecked, false=none, true=has invite
+  const [inviteChecked, setInviteChecked] = useState(false);
+
+  // For users with no company and not yet a driver, check if there's a pending driver invite
+  useEffect(() => {
+    const shouldCheck = isAuthenticated && user && !user.is_driver && !user.driver_pin && !companyLoading && !company;
+    if (!shouldCheck) { setInviteChecked(true); return; }
+    base44.functions.invoke('getDriverInvite', {})
+      .then(res => { setPendingInvite(!!res.data?.invite); })
+      .catch(() => { setPendingInvite(false); })
+      .finally(() => setInviteChecked(true));
+  }, [isAuthenticated, user, company, companyLoading]);
 
   // Show loading spinner while checking app public settings or auth
-  if (isLoadingPublicSettings || isLoadingAuth || companyLoading) {
+  const needsInviteCheck = isAuthenticated && user && !user.is_driver && !user.driver_pin && !company && !companyLoading;
+
+  if (isLoadingPublicSettings || isLoadingAuth || companyLoading || (needsInviteCheck && !inviteChecked)) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
@@ -103,10 +109,9 @@ const AuthenticatedApp = () => {
     );
   }
 
-  // Motorista convidado faz 1º login: ainda não tem is_driver, mas tem pending invite.
-  // Ativamos a conta direto, sem passar pelo CompanySetup.
-  if (isAuthenticated && !isDriver && !company && !driverActivated && hasPendingDriverInvite(user?.email)) {
-    return <DriverActivation user={user} onActivated={() => { setDriverActivated(true); window.location.reload(); }} />;
+  // Motorista convidado faz 1º login: ainda não tem is_driver, mas tem invite pendente no banco.
+  if (isAuthenticated && !isDriver && !company && pendingInvite) {
+    return <DriverActivation user={user} onActivated={() => window.location.reload()} />;
   }
 
   // Usuário normal logado sem empresa — cadastro inicial.

@@ -10,77 +10,25 @@ import { Label } from "@/components/ui/label";
 import { Users, Loader2, Search, UserCircle, Plus, Key, Copy, CheckCircle2, X, AlertCircle, Clock, Trash2 } from "lucide-react";
 
 function generatePin() {
-  // Cryptographically secure 6-digit PIN. Uses rejection sampling over a
-  // 0..9_999_999 window so the modulo bias common to Math.random() is avoided.
   if (typeof crypto !== "undefined" && crypto.getRandomValues) {
     const max = 1_000_000;
     const limit = Math.floor(0x100000000 / max) * max;
     const buf = new Uint32Array(1);
     let n;
-    do {
-      crypto.getRandomValues(buf);
-      n = buf[0];
-    } while (n >= limit);
+    do { crypto.getRandomValues(buf); n = buf[0]; } while (n >= limit);
     return String(n % max).padStart(6, "0");
   }
-  // Fallback for environments without WebCrypto.
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-// Pending invites live in localStorage because the base44 User record is
-// only materialized after the invitee accepts the invite and logs in for
-// the first time. Keeping the form data here lets us finish the
-// registration (is_driver, role, CPF, CNH, ...) automatically on the next
-// page load once the user shows up in User.list().
-const PENDING_KEY = "logisticapro:pending_driver_invites";
-
-function readPending() {
-  try {
-    const raw = localStorage.getItem(PENDING_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writePending(map) {
-  try {
-    localStorage.setItem(PENDING_KEY, JSON.stringify(map));
-  } catch {
-    // Storage full/disabled — non-fatal for this flow.
-  }
-}
-
-function savePending(email, data) {
-  const map = readPending();
-  map[email.toLowerCase()] = { ...data, email, created_at: new Date().toISOString() };
-  writePending(map);
-}
-
-function removePending(email) {
-  const map = readPending();
-  delete map[email.toLowerCase()];
-  writePending(map);
-}
-
-function buildDriverPayload(form) {
-  // Strips empty strings so we don't overwrite fields the base44 account
-  // already carries (e.g. a full_name set by the invitee on first login).
-  // Note: the User.role enum on base44 is limited to ("admin"|"user"), so
-  // we don't try to write role="driver" — the application-level driver
-  // identity is represented by is_driver=true and is picked up by the
-  // filters in Routes/Orders/Reports.
-  const payload = {
-    is_driver: true,
-  };
-  if (form.full_name) payload.full_name = form.full_name;
-  if (form.phone) payload.phone = form.phone;
-  if (form.cpf) payload.cpf = form.cpf;
-  if (form.license_number) payload.license_number = form.license_number;
-  if (form.license_category) payload.license_category = form.license_category;
-  if (form.license_points !== "" && form.license_points != null) {
-    payload.license_points = Number(form.license_points);
-  }
+function buildDriverPayload(invite) {
+  const payload = { is_driver: true };
+  if (invite.full_name) payload.full_name = invite.full_name;
+  if (invite.phone) payload.phone = invite.phone;
+  if (invite.cpf) payload.cpf = invite.cpf;
+  if (invite.license_number) payload.license_number = invite.license_number;
+  if (invite.license_category) payload.license_category = invite.license_category;
+  if (invite.license_points) payload.license_points = Number(invite.license_points);
   return payload;
 }
 
@@ -88,6 +36,7 @@ export default function Drivers() {
   const { companyId } = useCompany();
   const [users, setUsers] = useState([]);
   const [routes, setRoutes] = useState([]);
+  const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -97,8 +46,6 @@ export default function Drivers() {
   const [copiedPin, setCopiedPin] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [inviteInfo, setInviteInfo] = useState("");
-  const [pending, setPending] = useState({});
-  const [justMaterialized, setJustMaterialized] = useState([]);
 
   useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
@@ -108,40 +55,14 @@ export default function Drivers() {
   };
 
   const loadData = async () => {
-    const [u, r] = await safeParallel([
+    const [u, r, inv] = await safeParallel([
       () => fetchUsers(),
       () => base44.entities.Route.filter({ company_id: companyId }),
+      () => base44.entities.DriverInvite.filter({ company_id: companyId, status: 'pending' }),
     ]);
-    // Try to finish any pending invite whose user now exists.
-    const pendingMap = readPending();
-    const pendingEmails = Object.keys(pendingMap);
-    const materialized = [];
-    if (pendingEmails.length > 0 && u.length > 0) {
-      for (const email of pendingEmails) {
-        const match = u.find(x => x.email?.toLowerCase() === email);
-        if (!match) continue;
-        try {
-          await base44.entities.User.update(match.id, buildDriverPayload(pendingMap[email]));
-          removePending(email);
-          materialized.push(match.full_name || match.email);
-        } catch (err) {
-          console.error(`Falha ao aplicar convite pendente de ${email}:`, err);
-        }
-      }
-    }
-    // Refresh users if we changed anything so the card reflects new fields.
-    let freshUsers = u;
-    if (materialized.length > 0) {
-      try {
-        freshUsers = await fetchUsers();
-      } catch (err) {
-        console.error("Falha ao recarregar usuários:", err);
-      }
-    }
-    setUsers(freshUsers);
+    setUsers(u);
     setRoutes(r);
-    setPending(readPending());
-    if (materialized.length > 0) setJustMaterialized(materialized);
+    setPending(inv || []);
     setLoading(false);
   };
 
@@ -150,45 +71,29 @@ export default function Drivers() {
     setSaving(true);
     setInviteError("");
     setInviteInfo("");
-    const emailKey = form.email.trim();
+    const emailKey = form.email.trim().toLowerCase();
     try {
-      // inviteUser só aceita os papéis de plataforma "user" e "admin".
-      // O papel de aplicação ("driver") é gravado logo em seguida via
-      // User.update, que o schema da entidade já aceita no enum de role.
+      const pendingPin = generatePin();
+
+      // 1. Save invite to DB (works on any device the driver uses)
+      await base44.entities.DriverInvite.create({
+        email: emailKey,
+        full_name: form.full_name,
+        phone: form.phone,
+        cpf: form.cpf,
+        license_number: form.license_number,
+        license_category: form.license_category,
+        license_points: form.license_points ? Number(form.license_points) : undefined,
+        company_id: companyId,
+        driver_pin: pendingPin,
+        status: 'pending',
+      });
+
+      // 2. Send invite email
       await base44.users.inviteUser(emailKey, "user");
-      // The base44 User record is usually only created after the invitee
-      // accepts the invite and logs in once. We poll briefly in case they
-      // already existed; otherwise we stash the form data and finish the
-      // registration on the next page load.
-      let invited = null;
-      for (let i = 0; i < 5; i++) {
-        await new Promise(r => setTimeout(r, 1000));
-        try {
-          const all = await fetchUsers();
-          invited = all.find(u => u.email?.toLowerCase() === emailKey.toLowerCase());
-          if (invited) break;
-        } catch {
-          // If permissions block the listing, we just skip the happy-path
-          // poll and fall through to the deferred flow.
-          break;
-        }
-      }
-      if (invited) {
-        const pin = generatePin();
-        await base44.entities.User.update(invited.id, {
-          ...buildDriverPayload(form),
-          driver_pin: pin,
-          company_id: companyId,
-        });
-        await loadData();
-        setNewPin(pin);
-      } else {
-        // Deferred case: store the form, tell the admin what to do next.
-        const pendingPin = generatePin();
-        savePending(emailKey, { ...form, company_id: companyId, driver_pin: pendingPin });
-        setPending(readPending());
-        setInviteInfo(`Convite enviado para ${emailKey}. Quando o motorista fizer o primeiro login, a conta será ativada automaticamente e o PIN gerado.`);
-      }
+
+      await loadData();
+      setInviteInfo(`Convite enviado para ${emailKey}. Quando o motorista fizer o primeiro login, a conta será ativada automaticamente e o PIN gerado.`);
     } catch (err) {
       setInviteError(err?.message || "Falha ao cadastrar motorista.");
     } finally {
@@ -196,9 +101,9 @@ export default function Drivers() {
     }
   };
 
-  const cancelPending = (email) => {
-    removePending(email);
-    setPending(readPending());
+  const cancelInvite = async (invite) => {
+    await base44.entities.DriverInvite.delete(invite.id);
+    setPending(prev => prev.filter(p => p.id !== invite.id));
   };
 
   const regeneratePin = async (driver) => {
@@ -216,6 +121,14 @@ export default function Drivers() {
     navigator.clipboard.writeText(pin);
     setCopiedPin(true);
     setTimeout(() => setCopiedPin(false), 2000);
+  };
+
+  const resetForm = () => {
+    setShowForm(false);
+    setNewPin(null);
+    setInviteError("");
+    setInviteInfo("");
+    setForm({ email: "", full_name: "", phone: "", cpf: "", license_number: "", license_category: "", license_points: "" });
   };
 
   const drivers = users.filter(u => u.is_driver || u.driver_pin);
@@ -238,15 +151,15 @@ export default function Drivers() {
       {/* Cadastro Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-card rounded-2xl border border-border w-full max-w-md p-6 space-y-5 shadow-xl">
+          <div className="bg-card rounded-2xl border border-border w-full max-w-md p-6 space-y-5 shadow-xl overflow-y-auto max-h-[90vh]">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold">Cadastrar Motorista</h2>
-              <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground">
+              <button onClick={resetForm} className="text-muted-foreground hover:text-foreground">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {!newPin && !inviteInfo ? (
+            {!inviteInfo ? (
               <>
                 <div className="space-y-3">
                   <div>
@@ -290,7 +203,7 @@ export default function Drivers() {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
-                  Um convite será enviado para o e-mail. Se o motorista já for usuário do sistema, o PIN é gerado na hora; caso contrário, você gera o PIN depois que ele fizer o primeiro login.
+                  Um convite será enviado por e-mail. Quando o motorista fizer o primeiro login, a conta será ativada automaticamente e ele será direcionado ao app de entregas.
                 </p>
                 {inviteError && (
                   <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
@@ -303,76 +216,38 @@ export default function Drivers() {
                   {saving ? "Enviando convite..." : "Cadastrar e Enviar Convite"}
                 </Button>
               </>
-            ) : newPin ? (
-              <div className="space-y-4 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-green-100 flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-8 h-8 text-green-600" />
-                </div>
-                <div>
-                  <p className="font-semibold">Motorista cadastrado!</p>
-                  <p className="text-sm text-muted-foreground mt-1">Compartilhe o PIN abaixo com o motorista para acesso ao app.</p>
-                </div>
-                <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
-                  <p className="text-xs text-muted-foreground mb-1">PIN de Acesso</p>
-                  <p className="text-4xl font-mono font-bold tracking-widest text-primary">{newPin}</p>
-                </div>
-                <Button variant="outline" className="w-full" onClick={() => copyPin(newPin)}>
-                  {copiedPin ? <CheckCircle2 className="w-4 h-4 mr-2 text-green-600" /> : <Copy className="w-4 h-4 mr-2" />}
-                  {copiedPin ? "Copiado!" : "Copiar PIN"}
-                </Button>
-                <Button className="w-full" onClick={() => { setShowForm(false); setNewPin(null); }}>Concluir</Button>
-              </div>
             ) : (
               <div className="space-y-4">
                 <div className="w-14 h-14 rounded-2xl bg-blue-100 flex items-center justify-center mx-auto">
                   <Clock className="w-8 h-8 text-blue-600" />
                 </div>
                 <div className="text-center">
-                  <p className="font-semibold">Convite enviado</p>
+                  <p className="font-semibold">Convite enviado!</p>
+                  <p className="text-sm text-muted-foreground mt-1">{inviteInfo}</p>
                 </div>
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-900 space-y-2">
-                  <p>{inviteInfo}</p>
-                  <ol className="text-xs list-decimal pl-5 space-y-1 text-blue-800">
-                    <li>Motorista recebe e-mail e cria a senha.</li>
-                    <li>Ele faz o primeiro login no sistema.</li>
-                    <li>Ao voltar aqui, os dados dele já estarão preenchidos.</li>
-                    <li>Clique em <strong>Gerar novo</strong> no card para criar o PIN e entregar a ele.</li>
-                  </ol>
-                </div>
-                <Button className="w-full" onClick={() => { setShowForm(false); setInviteInfo(""); }}>Entendi</Button>
+                <Button className="w-full" onClick={resetForm}>Concluir</Button>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {justMaterialized.length > 0 && (
-        <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800">
-          <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="font-semibold">Convite(s) concluído(s):</p>
-            <p>{justMaterialized.join(", ")} fizeram o primeiro login e agora estão cadastrados como motorista. Gere o PIN no card correspondente.</p>
-          </div>
-          <button onClick={() => setJustMaterialized([])} className="text-green-700 hover:text-green-900"><X className="w-4 h-4" /></button>
-        </div>
-      )}
-
-      {Object.keys(pending).length > 0 && (
+      {/* Pending invites */}
+      {pending.length > 0 && (
         <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
           <p className="text-sm font-semibold text-amber-900 flex items-center gap-2">
-            <Clock className="w-4 h-4" /> Convites aguardando primeiro login ({Object.keys(pending).length})
+            <Clock className="w-4 h-4" /> Convites aguardando primeiro login ({pending.length})
           </p>
           <div className="space-y-1.5">
-            {Object.values(pending).map(p => (
-              <div key={p.email} className="flex items-center justify-between text-xs text-amber-900 bg-amber-100/60 rounded-md px-3 py-1.5">
+            {pending.map(p => (
+              <div key={p.id} className="flex items-center justify-between text-xs text-amber-900 bg-amber-100/60 rounded-md px-3 py-1.5">
                 <div className="flex-1 min-w-0">
                   <span className="font-medium">{p.full_name || p.email}</span>
                   {p.full_name && <span className="text-amber-800/80 ml-2">({p.email})</span>}
                 </div>
                 <button
-                  onClick={() => cancelPending(p.email)}
+                  onClick={() => cancelInvite(p)}
                   className="text-amber-800 hover:text-red-700 flex items-center gap-1"
-                  title="Cancelar convite pendente"
                 >
                   <Trash2 className="w-3 h-3" /> Cancelar
                 </button>
@@ -416,7 +291,6 @@ export default function Drivers() {
                 <p>Rotas concluídas: {completed} / {driverRoutes.length}</p>
               </div>
 
-              {/* PIN display */}
               <div className="mt-3 flex items-center justify-between bg-muted/40 rounded-lg px-3 py-2">
                 <div>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">PIN</p>
@@ -424,7 +298,7 @@ export default function Drivers() {
                     {d.driver_pin ? d.driver_pin : <span className="text-muted-foreground italic text-xs">não gerado</span>}
                   </p>
                 </div>
-                <button onClick={() => { regeneratePin(d); }} className="text-xs text-primary hover:underline flex items-center gap-1">
+                <button onClick={() => regeneratePin(d)} className="text-xs text-primary hover:underline flex items-center gap-1">
                   <Key className="w-3 h-3" /> Gerar novo
                 </button>
               </div>

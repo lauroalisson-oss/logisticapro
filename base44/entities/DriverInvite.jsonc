@@ -1,0 +1,56 @@
+{
+  "name": "DriverInvite",
+  "type": "object",
+  "properties": {
+    "email": {
+      "type": "string",
+      "title": "Email do Motorista"
+    },
+    "full_name": {
+      "type": "string",
+      "title": "Nome Completo"
+    },
+    "phone": {
+      "type": "string",
+      "title": "Telefone"
+    },
+    "cpf": {
+      "type": "string",
+      "title": "CPF"
+    },
+    "license_number": {
+      "type": "string",
+      "title": "N\u00famero CNH"
+    },
+    "license_category": {
+      "type": "string",
+      "title": "Categoria CNH"
+    },
+    "license_points": {
+      "type": "number",
+      "title": "Pontos na Carteira"
+    },
+    "company_id": {
+      "type": "string",
+      "title": "Empresa"
+    },
+    "driver_pin": {
+      "type": "string",
+      "title": "PIN pr\u00e9-gerado"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "pending",
+        "activated"
+      ],
+      "default": "pending"
+    }
+  },
+  "required": [
+    "email",
+    "company_id",
+    "status"
+  ]
+}
