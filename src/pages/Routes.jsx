@@ -70,18 +70,27 @@ export default function Routes() {
   useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
   const loadData = async () => {
-    const [r, l, o, u] = await safeParallel([
+    const [r, l, o, u, invites] = await safeParallel([
       () => base44.entities.Route.filter({ company_id: companyId }),
       () => base44.entities.Load.filter({ company_id: companyId }),
       () => base44.entities.Order.filter({ company_id: companyId }),
       () => base44.entities.User.filter({ company_id: companyId }),
+      () => base44.entities.DriverInvite.filter({ company_id: companyId }),
     ]);
-    setRoutes(r); setLoads(l); setOrders(o); setUsers(u);
+    const userEmails = new Set((u || []).map(x => x.email));
+    const inviteDrivers = (invites || []).map(i => ({
+      id: i.id,
+      email: i.email,
+      full_name: i.full_name || i.email,
+      _fromInvite: true,
+    })).filter(i => !userEmails.has(i.email));
+    setRoutes(r); setLoads(l); setOrders(o);
+    setUsers([...(u || []), ...inviteDrivers]);
     setLoading(false);
   };
 
   const readyLoads = loads.filter(l => ["assembling", "ready"].includes(l.status));
-  const drivers = users.filter(u => u.role === "driver" || u.is_driver || u.driver_pin);
+  const drivers = users.filter(u => u.role === "driver" || u.is_driver || u.driver_pin || u._fromInvite);
 
   const handleCreate = async () => {
     const load = loads.find(l => l.id === selectedLoad);
@@ -284,7 +293,13 @@ export default function Routes() {
           <div className="space-y-4">
             <div>
               <Label>Carga</Label>
-              <Select value={selectedLoad} onValueChange={v => { setSelectedLoad(v); setCreateError(""); }}>
+              <Select value={selectedLoad} onValueChange={v => {
+                setSelectedLoad(v);
+                setCreateError("");
+                // Auto-fill driver from load
+                const load = loads.find(l => l.id === v);
+                if (load?.driver_id) setSelectedDriver(load.driver_id);
+              }}>
                 <SelectTrigger><SelectValue placeholder="Selecione uma carga..." /></SelectTrigger>
                 <SelectContent>
                   {readyLoads.map(l => (
