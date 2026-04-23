@@ -57,11 +57,12 @@ const AuthenticatedApp = () => {
     }
   }
 
+  // Motorista = tem is_driver OU driver_pin OU não tem company_id mas está convidado como "user"
+  // O PIN de driver é a barreira de segurança deles — não precisam de empresa.
   const isDriver = isAuthenticated && (user?.is_driver || user?.driver_pin);
   const isAdmin = isAuthenticated && isPlatformAdmin(user);
 
   // Super-admin não precisa ter empresa e não passa pelo gate de PIN.
-  // Rotas de plataforma (/admin/*) + visão read-through pro painel normal.
   if (isAdmin) {
     return (
       <Routes>
@@ -75,14 +76,29 @@ const AuthenticatedApp = () => {
     );
   }
 
-  // Usuário normal logado sem empresa (e não é motorista) — cadastro inicial.
-  if (isAuthenticated && !company && !isDriver) {
+  // Motoristas vão direto pro layout deles — bloqueados pelo PIN interno.
+  if (isDriver) {
+    return (
+      <Routes>
+        <Route path="/" element={<Navigate to="/driver" replace />} />
+        <Route element={<DriverLayout />}>
+          <Route path="/driver" element={<DriverRoute />} />
+          <Route path="/driver/stops" element={<DriverStops />} />
+          <Route path="/driver/map" element={<DriverMap />} />
+          <Route path="/driver/profile" element={<DriverProfile />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/driver" replace />} />
+      </Routes>
+    );
+  }
+
+  // Usuário normal logado sem empresa — cadastro inicial.
+  if (isAuthenticated && !company) {
     return <CompanySetup />;
   }
 
   // Empresa sem acesso ativo (aguardando PIN, expirada, suspensa): tela de lock.
-  // Motoristas passam direto — eles são gated pelo próprio PIN deles.
-  if (isAuthenticated && company && !isDriver && !companyHasActiveAccess(company)) {
+  if (isAuthenticated && company && !companyHasActiveAccess(company)) {
     return <CompanyAccessLock />;
   }
 
@@ -105,13 +121,6 @@ const AuthenticatedApp = () => {
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/maintenance" element={<MaintenancePage />} />
         <Route path="/settings" element={<Settings />} />
-      </Route>
-      {/* Driver Layout */}
-      <Route element={<DriverLayout />}>
-        <Route path="/driver" element={<DriverRoute />} />
-        <Route path="/driver/stops" element={<DriverStops />} />
-        <Route path="/driver/map" element={<DriverMap />} />
-        <Route path="/driver/profile" element={<DriverProfile />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
