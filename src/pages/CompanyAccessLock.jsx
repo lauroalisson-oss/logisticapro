@@ -26,14 +26,21 @@ export default function CompanyAccessLock() {
     setError("");
     try {
       const candidates = await base44.entities.AccessPin.filter({ pin: code });
-      const match = candidates.find(p => p.status === "available");
+
+      // Aceita PIN disponível OU PIN já resgatado pela própria empresa
+      // (o mesmo PIN vale enquanto o acesso estiver dentro do prazo).
+      const match = candidates.find(p =>
+        p.status === "available" ||
+        (p.status === "redeemed" && p.redeemed_by_company_id === company?.id)
+      );
+
       if (!match) {
-        const alreadyRedeemed = candidates.find(p => p.status === "redeemed");
-        if (alreadyRedeemed) setError("Este PIN já foi utilizado.");
+        if (candidates.find(p => p.status === "redeemed")) setError("Este PIN foi utilizado por outra empresa.");
         else if (candidates.find(p => p.status === "expired")) setError("Este PIN foi invalidado. Solicite um novo ao administrador.");
         else setError("PIN não encontrado. Verifique e tente novamente.");
         return;
       }
+
       // Se o PIN foi emitido para um email específico, ele precisa casar
       // com o owner_email da empresa que está tentando resgatar.
       if (match.assigned_company_email &&
@@ -50,11 +57,14 @@ export default function CompanyAccessLock() {
         access_expires_at: newExpiresAt,
         last_pin_used: match.pin,
       });
-      await base44.entities.AccessPin.update(match.id, {
-        status: "redeemed",
-        redeemed_by_company_id: company.id,
-        redeemed_at: redeemedAt,
-      });
+      // Só atualiza o PIN se ainda estava disponível
+      if (match.status === "available") {
+        await base44.entities.AccessPin.update(match.id, {
+          status: "redeemed",
+          redeemed_by_company_id: company.id,
+          redeemed_at: redeemedAt,
+        });
+      }
 
       patchCompany({
         status: "active",
