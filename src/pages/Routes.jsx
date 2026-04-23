@@ -224,10 +224,15 @@ export default function Routes() {
   const openMapRoute = async (r) => {
     setMapRoute(r);
     setMapGeometry(null);
-    // Try to fetch real road geometry for display
+    // Include departure point if configured
     const stopsWithCoords = (r.stops || []).filter(s => s.latitude && s.longitude);
-    if (stopsWithCoords.length >= 2) {
-      const result = await osrmRoute(stopsWithCoords);
+    const depLat = company?.departure_lat;
+    const depLng = company?.departure_lng;
+    const allPoints = depLat && depLng
+      ? [{ latitude: depLat, longitude: depLng }, ...stopsWithCoords]
+      : stopsWithCoords;
+    if (allPoints.length >= 2) {
+      const result = await osrmRoute(allPoints);
       setMapGeometry(result.geometry);
     }
   };
@@ -428,11 +433,26 @@ export default function Routes() {
           {mapRoute && (
             <div className="h-96 rounded-lg overflow-hidden">
               <MapContainer
-                center={mapRoute.stops?.length > 0 ? [mapRoute.stops[0].latitude, mapRoute.stops[0].longitude] : [-23.55, -46.63]}
-                zoom={12}
+                center={
+                  company?.departure_lat && company?.departure_lng
+                    ? [company.departure_lat, company.departure_lng]
+                    : mapRoute.stops?.length > 0
+                    ? [mapRoute.stops[0].latitude, mapRoute.stops[0].longitude]
+                    : [-23.55, -46.63]
+                }
+                zoom={10}
                 style={{ height: "100%", width: "100%" }}
               >
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                {/* Departure point marker */}
+                {company?.departure_lat && company?.departure_lng && (
+                  <Marker position={[company.departure_lat, company.departure_lng]}>
+                    <Popup>
+                      <strong>🏭 Ponto de Partida</strong><br />
+                      {company.departure_address || "Base"}
+                    </Popup>
+                  </Marker>
+                )}
                 {(mapRoute.stops || []).map((stop, idx) => (
                   <Marker key={idx} position={[stop.latitude, stop.longitude]}>
                     <Popup>
