@@ -12,7 +12,9 @@
       "enum": [
         "issue",
         "not_delivered",
-        "delay"
+        "delay",
+        "off_route",
+        "gps_silent"
       ],
       "default": "issue"
     },

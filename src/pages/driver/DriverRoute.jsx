@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import StatusBadge from "../../components/shared/StatusBadge";
 import OdometerCamera from "../../components/driver/OdometerCamera";
 import DriverPinLogin from "./DriverPinLogin";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, CheckCircle2, MapPin, Navigation } from "lucide-react";
+import { Loader2, Play, CheckCircle2, MapPin, Navigation, WifiOff } from "lucide-react";
+import { useGpsQueue } from "@/lib/useGpsQueue";
 
 export default function DriverRoute() {
   const [route, setRoute] = useState(null);
@@ -17,12 +18,44 @@ export default function DriverRoute() {
   const [kmArrivalPhoto, setKmArrivalPhoto] = useState(null);
   const [gpsActive, setGpsActive] = useState(false);
   const [gpsError, setGpsError] = useState("");
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   // Refs mirror the latest route/user so the watch callback never reads stale state.
   const routeRef = useRef(null);
   const userRef = useRef(null);
+  // watchPosition and WakeLock refs
+  const watchIdRef = useRef(null);
+  const wakeLockRef = useRef(null);
 
   useEffect(() => { routeRef.current = route; }, [route]);
   useEffect(() => { userRef.current = user; }, [user]);
+
+  // Track online/offline status
+  useEffect(() => {
+    const setOnline = () => setIsOffline(false);
+    const setOffline = () => setIsOffline(true);
+    window.addEventListener("online", setOnline);
+    window.addEventListener("offline", setOffline);
+    return () => {
+      window.removeEventListener("online", setOnline);
+      window.removeEventListener("offline", setOffline);
+    };
+  }, []);
+
+  // Provide fresh route data to the GPS queue without stale closures
+  const getRouteData = useCallback(() => {
+    const r = routeRef.current;
+    const u = userRef.current;
+    if (!r) return null;
+    const deliveryStops = (r.stops || []).filter(s => !s._isDeparture);
+    const delivered = deliveryStops.filter(s => s.status === "delivered").length;
+    const progress = deliveryStops.length > 0 ? Math.round((delivered / deliveryStops.length) * 100) : 0;
+    return { id: r.id, status: r.status, vehicle_plate: r.vehicle_plate, progress };
+  }, []);
+
+  const { push: pushGps } = useGpsQueue({
+    userEmail: user?.email || null,
+    getRouteData,
+  });
 
   useEffect(() => {
     const verified = sessionStorage.getItem("driver_pin_verified") === "1";
@@ -59,10 +92,6 @@ export default function DriverRoute() {
     setLoading(false);
   };
 
-  // Ref to store the watchPosition ID so we can clear it later
-  const watchIdRef = useRef(null);
-  const wakeLockRef = useRef(null);
-
   const requestWakeLock = async () => {
     try {
       if ("wakeLock" in navigator) {
@@ -90,37 +119,18 @@ export default function DriverRoute() {
     // Keep screen on so GPS continues in background
     requestWakeLock();
 
-    const handlePosition = async (pos) => {
-      try {
-        const r = routeRef.current;
-        const u = userRef.current;
-        if (!u?.email) return;
-        const deliveryStops = (r?.stops || []).filter(s => !s._isDeparture);
-        const delivered = deliveryStops.filter(s => s.status === "delivered").length;
-        const progress = deliveryStops.length > 0 ? Math.round((delivered / deliveryStops.length) * 100) : 0;
-        const existing = await base44.entities.DriverLocation.filter({ driver_email: u.email });
-        const data = {
-          company_id: u.company_id || "",
-          driver_email: u.email,
-          driver_name: u.full_name,
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          vehicle_plate: r?.vehicle_plate || "",
-          route_id: r?.id || "",
-          route_status: r?.status || "",
-          route_progress: progress,
-          last_update: new Date().toISOString(),
-          is_active: true,
-        };
-        if (existing.length > 0) {
-          await base44.entities.DriverLocation.update(existing[0].id, data);
-        } else {
-          await base44.entities.DriverLocation.create(data);
-        }
-        setGpsError(""); // Clear any previous error on success
-      } catch (err) {
-        console.error("Falha ao enviar localização:", err);
-      }
+    const handlePosition = (pos) => {
+      const u = userRef.current;
+      if (!u?.email) return;
+      // Push to offline-safe queue — it flushes to server when online
+      pushGps({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        company_id: u.company_id || "",
+        driver_name: u.full_name || "",
+      });
+      setGpsError("");
     };
 
     const handleError = (err) => {
@@ -267,11 +277,17 @@ export default function DriverRoute() {
         <p className="text-sm text-muted-foreground">Veículo: {route.vehicle_plate}</p>
         <p className="text-sm text-muted-foreground">{totalStops} parada(s) • {delivered} entregue(s)</p>
 
-        {/* GPS indicator */}
-        {gpsActive && !gpsError && (
+        {/* GPS / connectivity indicators */}
+        {gpsActive && !gpsError && !isOffline && (
           <div className="mt-2 flex items-center gap-1.5 text-xs text-green-600 font-medium">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             GPS ativo — localização sendo compartilhada
+          </div>
+        )}
+        {gpsActive && isOffline && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-600 font-medium">
+            <WifiOff className="w-3.5 h-3.5" />
+            Offline — posições salvas localmente, sincronizando ao reconectar
           </div>
         )}
         {gpsError && (

@@ -6,8 +6,20 @@ import { AlertTriangle, CheckCircle2, Clock, RefreshCw, MapPin, User, Truck } fr
 import { Button } from "@/components/ui/button";
 import moment from "moment";
 
-const TYPE_LABEL = { issue: "Ocorrência", not_delivered: "Não Entregue", delay: "Atraso" };
-const TYPE_COLOR = { issue: "text-red-600 bg-red-50 border-red-200", not_delivered: "text-orange-600 bg-orange-50 border-orange-200", delay: "text-yellow-600 bg-yellow-50 border-yellow-200" };
+const TYPE_LABEL = {
+  issue: "Ocorrência",
+  not_delivered: "Não Entregue",
+  delay: "Atraso",
+  off_route: "Fora da Rota",
+  gps_silent: "GPS Silencioso",
+};
+const TYPE_COLOR = {
+  issue: "text-red-600 bg-red-50 border-red-200",
+  not_delivered: "text-orange-600 bg-orange-50 border-orange-200",
+  delay: "text-yellow-600 bg-yellow-50 border-yellow-200",
+  off_route: "text-purple-600 bg-purple-50 border-purple-200",
+  gps_silent: "text-slate-600 bg-slate-50 border-slate-200",
+};
 
 export default function Notifications() {
   const { companyId } = useCompany();
