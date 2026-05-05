@@ -1,0 +1,151 @@
+{
+  "name": "VehicleInspection",
+  "type": "object",
+  "properties": {
+    "company_id": {
+      "type": "string",
+      "title": "Empresa"
+    },
+    "route_id": {
+      "type": "string",
+      "title": "Rota"
+    },
+    "route_number": {
+      "type": "string",
+      "title": "N\u00famero da Rota"
+    },
+    "driver_email": {
+      "type": "string",
+      "title": "Email do Motorista"
+    },
+    "driver_name": {
+      "type": "string",
+      "title": "Nome do Motorista"
+    },
+    "vehicle_id": {
+      "type": "string",
+      "title": "Ve\u00edculo"
+    },
+    "vehicle_plate": {
+      "type": "string",
+      "title": "Placa"
+    },
+    "inspected_at": {
+      "type": "string",
+      "title": "Data/Hora da Inspe\u00e7\u00e3o"
+    },
+    "oil_level": {
+      "type": "string",
+      "title": "N\u00edvel de \u00d3leo",
+      "enum": [
+        "ok",
+        "low",
+        "critical"
+      ],
+      "default": "ok"
+    },
+    "tire_front_left": {
+      "type": "string",
+      "title": "Pneu Dianteiro Esquerdo",
+      "enum": [
+        "ok",
+        "low",
+        "flat"
+      ],
+      "default": "ok"
+    },
+    "tire_front_right": {
+      "type": "string",
+      "title": "Pneu Dianteiro Direito",
+      "enum": [
+        "ok",
+        "low",
+        "flat"
+      ],
+      "default": "ok"
+    },
+    "tire_rear_left": {
+      "type": "string",
+      "title": "Pneu Traseiro Esquerdo",
+      "enum": [
+        "ok",
+        "low",
+        "flat"
+      ],
+      "default": "ok"
+    },
+    "tire_rear_right": {
+      "type": "string",
+      "title": "Pneu Traseiro Direito",
+      "enum": [
+        "ok",
+        "low",
+        "flat"
+      ],
+      "default": "ok"
+    },
+    "water_level": {
+      "type": "string",
+      "title": "N\u00edvel de \u00c1gua (Radiador)",
+      "enum": [
+        "ok",
+        "low",
+        "critical"
+      ],
+      "default": "ok"
+    },
+    "brake_fluid": {
+      "type": "string",
+      "title": "Fluido de Freio",
+      "enum": [
+        "ok",
+        "low",
+        "critical"
+      ],
+      "default": "ok"
+    },
+    "lights": {
+      "type": "string",
+      "title": "Far\u00f3is e Luzes",
+      "enum": [
+        "ok",
+        "partial",
+        "broken"
+      ],
+      "default": "ok"
+    },
+    "wipers": {
+      "type": "string",
+      "title": "Limpadores de Para-brisa",
+      "enum": [
+        "ok",
+        "worn",
+        "broken"
+      ],
+      "default": "ok"
+    },
+    "cargo_straps": {
+      "type": "string",
+      "title": "Cintas/Fixa\u00e7\u00e3o de Carga",
+      "enum": [
+        "ok",
+        "missing",
+        "damaged"
+      ],
+      "default": "ok"
+    },
+    "has_issues": {
+      "type": "boolean",
+      "title": "Possui Pend\u00eancias",
+      "default": false
+    },
+    "notes": {
+      "type": "string",
+      "title": "Observa\u00e7\u00f5es"
+    }
+  },
+  "required": [
+    "route_id",
+    "driver_email"
+  ]
+}

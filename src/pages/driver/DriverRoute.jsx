@@ -6,12 +6,14 @@ import DriverPinLogin from "./DriverPinLogin";
 import { Button } from "@/components/ui/button";
 import { Loader2, Play, CheckCircle2, MapPin, Navigation, WifiOff } from "lucide-react";
 import { useGpsQueue } from "@/lib/useGpsQueue";
+import VehicleInspectionChecklist from "../../components/driver/VehicleInspectionChecklist";
 
 export default function DriverRoute() {
   const [route, setRoute] = useState(null);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [pinVerified, setPinVerified] = useState(false);
+  const [showInspection, setShowInspection] = useState(false);
   const [showKmDeparture, setShowKmDeparture] = useState(false);
   const [showKmArrival, setShowKmArrival] = useState(false);
   const [kmDeparturePhoto, setKmDeparturePhoto] = useState(null);
@@ -151,7 +153,28 @@ export default function DriverRoute() {
 
   const handleStartRoute = async () => {
     if (!route) return;
-    // Must take departure photo first
+    // Show optional inspection checklist first
+    setShowInspection(true);
+  };
+
+  const handleInspectionDone = async (inspectionData) => {
+    await base44.entities.VehicleInspection.create({
+      ...inspectionData,
+      company_id: user?.company_id || "",
+      route_id: route.id,
+      route_number: route.route_number,
+      driver_email: user?.email || "",
+      driver_name: user?.full_name || "",
+      vehicle_id: route.vehicle_id || "",
+      vehicle_plate: route.vehicle_plate || "",
+      inspected_at: new Date().toISOString(),
+    });
+    setShowInspection(false);
+    setShowKmDeparture(true);
+  };
+
+  const handleInspectionSkip = () => {
+    setShowInspection(false);
     setShowKmDeparture(true);
   };
 
@@ -198,6 +221,18 @@ export default function DriverRoute() {
 
   if (!pinVerified) return <DriverPinLogin onSuccess={handlePinSuccess} />;
   if (loading) return <div className="flex items-center justify-center h-96"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+
+  // --- Vehicle Inspection ---
+  if (showInspection && route) {
+    return (
+      <VehicleInspectionChecklist
+        route={route}
+        user={user}
+        onConfirm={handleInspectionDone}
+        onSkip={handleInspectionSkip}
+      />
+    );
+  }
 
   // --- KM Departure Modal ---
   if (showKmDeparture) {
