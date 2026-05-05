@@ -7,8 +7,11 @@ import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import {
   ShoppingCart, Truck, Route, AlertTriangle, MapPin,
-  Clock, CheckCircle2, XCircle, Loader2, Wifi, WifiOff, PauseCircle
+  Clock, CheckCircle2, XCircle, Loader2, Wifi, WifiOff, PauseCircle,
+  GitCompare, ChevronDown, ChevronUp
 } from "lucide-react";
+import { useState as useLocalState } from "react";
+import RouteComparisonView from "../components/dashboard/RouteComparisonView";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
@@ -29,6 +32,7 @@ const truckIcon = new L.Icon({
 
 export default function Dashboard() {
   const { companyId } = useCompany();
+  const [showComparison, setShowComparison] = useLocalState(false);
   const [orders, setOrders] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [routes, setRoutes] = useState([]);
@@ -231,6 +235,28 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Route Comparison Panel */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <button
+          onClick={() => setShowComparison(v => !v)}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <GitCompare className="w-4 h-4 text-primary" />
+            <div className="text-left">
+              <p className="text-sm font-semibold">Comparativo de Rotas — Planejado vs. Realizado</p>
+              <p className="text-xs text-muted-foreground">Analise divergências de trajeto e ordem de paradas</p>
+            </div>
+          </div>
+          {showComparison ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </button>
+        {showComparison && (
+          <div className="px-5 pb-5 border-t border-border pt-4">
+            <RouteComparisonView />
+          </div>
+        )}
       </div>
 
       {/* Alerts */}
