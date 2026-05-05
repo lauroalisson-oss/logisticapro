@@ -6,7 +6,7 @@ import PageHeader from "../components/shared/PageHeader";
 import KPICard from "../components/shared/KPICard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Truck, ShoppingCart, Route, CheckCircle2, UserCircle, AlertTriangle, Calendar, Fuel, Plus, X } from "lucide-react";
+import { Loader2, Truck, ShoppingCart, Route, CheckCircle2, UserCircle, AlertTriangle, Calendar, Fuel, Plus, X, Clock, TrendingUp } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 const COLORS = ["hsl(213,94%,45%)", "hsl(160,84%,39%)", "hsl(38,92%,50%)", "hsl(0,84%,60%)", "hsl(262,83%,58%)"];
@@ -156,9 +156,50 @@ export default function Reports() {
   }));
   const topProducts = Object.entries(productCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, qty]) => ({ name, quantidade: qty }));
 
+  // ---- Delay report logic ----
+  // A route is "late" if it was completed after the delivery_date of its orders
+  const delayedOrders = [];
+  routes.filter(r => r.status === "completed" && r.completed_at).forEach(route => {
+    (route.stops || []).forEach(stop => {
+      if (stop.status !== "delivered" || !stop.delivered_at) return;
+      // Find the matching order to get delivery_date
+      const order = orders.find(o => o.id === stop.order_id);
+      if (!order?.delivery_date) return;
+      const expected = new Date(order.delivery_date + "T23:59:59");
+      const actual = new Date(stop.delivered_at);
+      if (actual > expected) {
+        const diffMs = actual - expected;
+        const diffHours = Math.round(diffMs / 3600000);
+        delayedOrders.push({
+          order_number: stop.order_number || order.order_number,
+          client_name: stop.client_name,
+          address: stop.address,
+          driver_name: route.driver_name,
+          driver_email: route.driver_email,
+          expected_date: order.delivery_date,
+          delivered_at: stop.delivered_at,
+          delay_hours: diffHours,
+          route_number: route.route_number,
+        });
+      }
+    });
+  });
+  delayedOrders.sort((a, b) => b.delay_hours - a.delay_hours);
+
+  // Driver delay ranking
+  const driverDelayMap = {};
+  delayedOrders.forEach(d => {
+    const key = d.driver_email;
+    if (!driverDelayMap[key]) driverDelayMap[key] = { name: d.driver_name, email: d.driver_email, count: 0, totalHours: 0 };
+    driverDelayMap[key].count++;
+    driverDelayMap[key].totalHours += d.delay_hours;
+  });
+  const driverDelayRanking = Object.values(driverDelayMap).sort((a, b) => b.count - a.count);
+
   const tabs = [
     { id: "general", label: "Geral" },
     { id: "drivers", label: "Motoristas" },
+    { id: "delays", label: "Atrasos" },
     { id: "fuel", label: "Abastecimentos" },
   ];
 
@@ -318,6 +359,105 @@ export default function Reports() {
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ===== DELAYS TAB ===== */}
+      {tab === "delays" && (
+        <div className="space-y-6">
+          {/* KPIs */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="bg-card rounded-xl border border-border p-4 text-center">
+              <p className="text-xs text-muted-foreground mb-1">Pedidos Atrasados</p>
+              <p className="text-3xl font-bold text-destructive">{delayedOrders.length}</p>
+            </div>
+            <div className="bg-card rounded-xl border border-border p-4 text-center">
+              <p className="text-xs text-muted-foreground mb-1">Atraso Médio</p>
+              <p className="text-3xl font-bold text-amber-600">
+                {delayedOrders.length > 0 ? `${Math.round(delayedOrders.reduce((s, d) => s + d.delay_hours, 0) / delayedOrders.length)}h` : "—"}
+              </p>
+            </div>
+            <div className="bg-card rounded-xl border border-border p-4 text-center">
+              <p className="text-xs text-muted-foreground mb-1">Motoristas com Atraso</p>
+              <p className="text-3xl font-bold text-foreground">{driverDelayRanking.length}</p>
+            </div>
+          </div>
+
+          {/* Driver ranking */}
+          {driverDelayRanking.length > 0 && (
+            <div className="bg-card rounded-xl border border-border p-5">
+              <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-destructive" /> Ranking de Atrasos por Motorista
+              </h3>
+              <div className="space-y-3">
+                {driverDelayRanking.map((d, idx) => (
+                  <div key={d.email} className="flex items-center gap-3">
+                    <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${idx === 0 ? "bg-red-100 text-red-700" : idx === 1 ? "bg-orange-100 text-orange-700" : "bg-muted text-muted-foreground"}`}>
+                      {idx + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{d.name || d.email}</p>
+                      <div className="mt-1 h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-destructive/70 rounded-full"
+                          style={{ width: `${Math.min(100, (d.count / (driverDelayRanking[0]?.count || 1)) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-bold text-destructive">{d.count} atraso(s)</p>
+                      <p className="text-xs text-muted-foreground">~{Math.round(d.totalHours / d.count)}h médio</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Delayed orders table */}
+          <div className="bg-card rounded-xl border border-border p-5">
+            <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-500" /> Pedidos com Entrega em Atraso
+            </h3>
+            {delayedOrders.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <CheckCircle2 className="w-10 h-10 mx-auto mb-3 text-accent/50" />
+                <p className="text-sm font-medium">Nenhum atraso registrado!</p>
+                <p className="text-xs mt-1">Todos os pedidos foram entregues dentro do prazo.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border text-muted-foreground">
+                      <th className="text-left pb-2 pr-3">Pedido</th>
+                      <th className="text-left pb-2 pr-3">Cliente</th>
+                      <th className="text-left pb-2 pr-3">Motorista</th>
+                      <th className="text-left pb-2 pr-3">Previsão</th>
+                      <th className="text-left pb-2 pr-3">Entregue em</th>
+                      <th className="text-right pb-2">Atraso</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {delayedOrders.map((d, i) => (
+                      <tr key={i} className="border-b border-border/50 hover:bg-muted/20">
+                        <td className="py-2 pr-3 font-medium">{d.order_number}</td>
+                        <td className="py-2 pr-3">{d.client_name}</td>
+                        <td className="py-2 pr-3">{d.driver_name}</td>
+                        <td className="py-2 pr-3">{new Date(d.expected_date + "T12:00:00").toLocaleDateString("pt-BR")}</td>
+                        <td className="py-2 pr-3">{new Date(d.delivered_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
+                        <td className="py-2 text-right">
+                          <span className={`px-2 py-0.5 rounded-full font-semibold ${d.delay_hours > 24 ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                            +{d.delay_hours}h
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

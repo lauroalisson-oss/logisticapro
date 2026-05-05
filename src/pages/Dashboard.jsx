@@ -7,7 +7,7 @@ import PageHeader from "../components/shared/PageHeader";
 import StatusBadge from "../components/shared/StatusBadge";
 import {
   ShoppingCart, Truck, Route, AlertTriangle, MapPin,
-  Clock, CheckCircle2, XCircle, Loader2
+  Clock, CheckCircle2, XCircle, Loader2, Wifi, WifiOff, PauseCircle
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -79,6 +79,26 @@ export default function Dashboard() {
   const activeRoutes = routes.filter(r => ["started", "in_progress"].includes(r.status));
   const recentOrders = [...orders].sort((a, b) => new Date(b.created_date) - new Date(a.created_date)).slice(0, 5);
 
+  // Real-time fleet status
+  const now = new Date();
+  const GPS_ACTIVE_THRESHOLD_MIN = 15; // consider GPS active if updated within last 15 min
+  const gpsActiveDrivers = locations.filter(loc => {
+    if (!loc.last_update) return false;
+    const diffMin = (now - new Date(loc.last_update)) / 60000;
+    return diffMin <= GPS_ACTIVE_THRESHOLD_MIN;
+  });
+  const gpsInactive = locations.filter(loc => {
+    if (!loc.last_update) return true;
+    const diffMin = (now - new Date(loc.last_update)) / 60000;
+    return diffMin > GPS_ACTIVE_THRESHOLD_MIN;
+  });
+  const trucksStopped = vehicleStats.on_route - gpsActiveDrivers.length;
+  const fleetStatus = [
+    { label: "Em Trânsito (GPS ativo)", count: gpsActiveDrivers.length, color: "text-green-600", bg: "bg-green-50 border-green-200", icon: Wifi },
+    { label: "Parados / Sem sinal", count: Math.max(0, trucksStopped), color: "text-amber-600", bg: "bg-amber-50 border-amber-200", icon: PauseCircle },
+    { label: "GPS inativo >15min", count: gpsInactive.length, color: "text-red-600", bg: "bg-red-50 border-red-200", icon: WifiOff },
+  ];
+
   return (
     <div className="space-y-6">
       <PageHeader title="Dashboard" subtitle="Visão geral da operação logística" />
@@ -90,6 +110,25 @@ export default function Dashboard() {
         <KPICard title="Entregues" value={orderStats.delivered} icon={CheckCircle2} color="accent" />
         <KPICard title="Ocorrências" value={orderStats.issue} icon={XCircle} color="destructive" />
         <KPICard title="Rotas Ativas" value={activeRoutes.length} icon={Route} color="primary" />
+      </div>
+
+      {/* Real-time fleet status */}
+      <div className="bg-card rounded-xl border border-border p-5">
+        <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+          <Wifi className="w-4 h-4 text-primary" /> Status da Frota em Tempo Real
+        </h3>
+        <div className="grid grid-cols-3 gap-3">
+          {fleetStatus.map(item => (
+            <div key={item.label} className={`rounded-xl border p-4 flex flex-col items-center gap-2 ${item.bg}`}>
+              <item.icon className={`w-6 h-6 ${item.color}`} />
+              <p className={`text-3xl font-bold ${item.color}`}>{item.count}</p>
+              <p className="text-xs text-center text-muted-foreground leading-tight">{item.label}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground mt-3 text-right">
+          Atualizado agora • {locations.length} motorista(s) rastreado(s)
+        </p>
       </div>
 
       {/* Vehicles + Map */}
