@@ -4,7 +4,7 @@ import { Loader2, MapPin } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { parseGeometry, formatDuration, haversineKm, getRouteDeparture, getDeliveryStops } from "@/lib/routing";
+import { parseGeometry, formatDuration, haversineKm, getRouteDeparture, getDeliveryStops, getRouteGeometry, serializeGeometry } from "@/lib/routing";
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -50,6 +50,9 @@ export default function DriverMap() {
   const [loading, setLoading] = useState(true);
   const [driverPos, setDriverPos] = useState(null);
   const [gpsError, setGpsError] = useState("");
+  // Lazy geometry — for legacy routes that were saved without route_geometry,
+  // we fetch it on demand so the driver also sees real road trajectory.
+  const [lazyGeometry, setLazyGeometry] = useState(null);
   const watchIdRef = useRef(null);
 
   useEffect(() => {
@@ -69,6 +72,39 @@ export default function DriverMap() {
     setRoute(active || null);
     setLoading(false);
   };
+
+  // Fetch a real road geometry whenever the route lacks one. Persist it back
+  // to the route so the central and other sessions also benefit.
+  useEffect(() => {
+    if (!route) return;
+    const persisted = parseGeometry(route.route_geometry);
+    if (persisted && persisted.length > 1) return;
+    const departure = getRouteDeparture(route);
+    const deliveries = getDeliveryStops(route)
+      .filter(s => s.latitude && s.longitude)
+      .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+    const points = departure ? [departure, ...deliveries] : deliveries;
+    if (points.length < 2) return;
+    let cancelled = false;
+    (async () => {
+      const result = await getRouteGeometry(points);
+      if (cancelled || !result?.coordinates?.length) return;
+      setLazyGeometry(result.coordinates);
+      // Best-effort write-back so the central + the driver share the geometry.
+      try {
+        await base44.entities.Route.update(route.id, {
+          route_geometry: serializeGeometry(result.coordinates),
+          total_distance_km: result.distance_km || route.total_distance_km,
+          estimated_duration_min: result.duration_min || route.estimated_duration_min,
+          estimated_time_min: result.duration_min || route.estimated_time_min,
+        });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[DriverMap] could not persist geometry:", err?.message || err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [route?.id, route?.route_geometry]);
 
   const startGPS = () => {
     if (!navigator.geolocation) {
@@ -110,7 +146,7 @@ export default function DriverMap() {
         : stops.length > 0 ? [stops[0].latitude, stops[0].longitude]
         : [-23.55, -46.63]);
 
-  const geometry = parseGeometry(route.route_geometry);
+  const geometry = parseGeometry(route.route_geometry) || lazyGeometry;
   const hasRealGeometry = Array.isArray(geometry) && geometry.length > 1;
 
   // Next stop = first delivery still pending/en_route
