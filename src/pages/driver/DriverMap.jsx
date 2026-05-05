@@ -4,7 +4,7 @@ import { Loader2, MapPin } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { parseGeometry, formatDuration, haversineKm } from "@/lib/routing";
+import { parseGeometry, formatDuration, haversineKm, getRouteDeparture, getDeliveryStops } from "@/lib/routing";
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -19,6 +19,17 @@ const driverIcon = L.divIcon({
   html: `<div style="width:18px;height:18px;background:#1d6ef5;border:3px solid white;border-radius:50%;box-shadow:0 0 0 3px rgba(29,110,245,0.35)"></div>`,
   iconSize: [18, 18],
   iconAnchor: [9, 9],
+});
+
+const departureIcon = L.divIcon({
+  className: "",
+  html: `<div style="
+    width:32px;height:32px;border-radius:8px;border:3px solid white;
+    background:#0f172a;box-shadow:0 2px 10px rgba(0,0,0,0.4);
+    display:flex;align-items:center;justify-content:center;font-size:15px;
+  ">🏭</div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
 });
 
 // Component that re-centers the map when position changes
@@ -88,31 +99,32 @@ export default function DriverMap() {
     );
   }
 
-  const stops = [...route.stops]
+  const departure = getRouteDeparture(route);
+  const stops = getDeliveryStops(route)
     .filter(s => s.latitude && s.longitude)
     .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
 
-  // Default center: driver position, or first stop
-  const defaultCenter = driverPos || (stops.length > 0 ? [stops[0].latitude, stops[0].longitude] : [-23.55, -46.63]);
+  // Default center: driver position, departure, or first delivery
+  const defaultCenter = driverPos
+    || (departure ? [departure.latitude, departure.longitude]
+        : stops.length > 0 ? [stops[0].latitude, stops[0].longitude]
+        : [-23.55, -46.63]);
 
   const geometry = parseGeometry(route.route_geometry);
   const hasRealGeometry = Array.isArray(geometry) && geometry.length > 1;
 
-  // Next stop = first non-departure delivery stop still pending/en_route
-  const nextStop = stops.find(s => !s._isDeparture && s.status !== "delivered" && s.status !== "not_delivered");
+  // Next stop = first delivery still pending/en_route
+  const nextStop = stops.find(s => s.status !== "delivered" && s.status !== "not_delivered");
 
-  // Distance to the next stop:
-  //  - with GPS: straight-line haversine from current driver position
-  //  - without GPS: leave blank (we don't have a fixed origin to measure from)
+  // Distance to the next stop (haversine from driver pos when GPS available).
   const distanceToNextKm = nextStop && driverPos
     ? haversineKm(driverPos[0], driverPos[1], nextStop.latitude, nextStop.longitude)
     : null;
 
-  // Remaining duration estimate: if we have a geometry-based total, scale it
-  // by share of remaining stops; otherwise use the persisted total directly.
+  // Remaining duration: scale persisted total by share of remaining stops.
   const totalDurationMin = route.estimated_duration_min ?? route.estimated_time_min ?? null;
-  const remainingDeliveries = stops.filter(s => !s._isDeparture && s.status !== "delivered" && s.status !== "not_delivered").length;
-  const totalDeliveries = stops.filter(s => !s._isDeparture).length;
+  const remainingDeliveries = stops.filter(s => s.status !== "delivered" && s.status !== "not_delivered").length;
+  const totalDeliveries = stops.length;
   const remainingMin = totalDurationMin && totalDeliveries
     ? Math.round((totalDurationMin * remainingDeliveries) / totalDeliveries)
     : totalDurationMin;
@@ -177,19 +189,23 @@ export default function DriverMap() {
             </>
           )}
 
-          {/* Route stops */}
+          {/* Departure marker (separate from stops) */}
+          {departure && (
+            <Marker position={[departure.latitude, departure.longitude]} icon={departureIcon}>
+              <Popup>
+                <strong>🏭 Ponto de Partida</strong><br />
+                {departure.address}
+              </Popup>
+            </Marker>
+          )}
+
+          {/* Delivery stops */}
           {stops.map((stop, idx) => (
             <Marker key={stop.order_id || idx} position={[stop.latitude, stop.longitude]}>
               <Popup>
-                {stop._isDeparture ? (
-                  <strong>🏭 Ponto de Partida</strong>
-                ) : (
-                  <>
-                    <strong>#{stop.sequence} {stop.client_name}</strong><br />
-                    {stop.address}<br />
-                    <span className="text-xs capitalize">{stop.status}</span>
-                  </>
-                )}
+                <strong>#{stop.sequence} {stop.client_name}</strong><br />
+                {stop.address}<br />
+                <span className="text-xs capitalize">{stop.status}</span>
               </Popup>
             </Marker>
           ))}
@@ -203,14 +219,20 @@ export default function DriverMap() {
               opacity={0.85}
             />
           ) : (
-            stops.length > 1 && (
-              <Polyline
-                positions={stops.map(s => [s.latitude, s.longitude])}
-                color="hsl(213,94%,45%)"
-                weight={3}
-                dashArray="8"
-              />
-            )
+            (() => {
+              const fallbackPos = [
+                ...(departure ? [[departure.latitude, departure.longitude]] : []),
+                ...stops.map(s => [s.latitude, s.longitude]),
+              ];
+              return fallbackPos.length > 1 ? (
+                <Polyline
+                  positions={fallbackPos}
+                  color="hsl(213,94%,45%)"
+                  weight={3}
+                  dashArray="8"
+                />
+              ) : null;
+            })()
           )}
         </MapContainer>
       </div>

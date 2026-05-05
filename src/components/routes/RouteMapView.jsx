@@ -7,7 +7,7 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import { RefreshCw, Truck, MapPin, Navigation, CheckCircle2, Clock, AlertCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import moment from "moment";
-import { parseGeometry, formatDuration } from "@/lib/routing";
+import { parseGeometry, formatDuration, getRouteDeparture, getDeliveryStops } from "@/lib/routing";
 
 // Fix default icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -36,6 +36,17 @@ const stopStatusIcon = (status) => L.divIcon({
   "></div>`,
   iconSize: [28, 28],
   iconAnchor: [14, 14],
+});
+
+const departureIcon = L.divIcon({
+  className: "",
+  html: `<div style="
+    width:32px;height:32px;border-radius:8px;border:3px solid white;
+    background:#0f172a;box-shadow:0 2px 10px rgba(0,0,0,0.4);
+    display:flex;align-items:center;justify-content:center;font-size:15px;
+  ">🏭</div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
 });
 
 const vehicleIcon = (plate) => L.divIcon({
@@ -90,21 +101,26 @@ export default function RouteMapView() {
 
   const displayRoutes = selectedRoute ? routes.filter(r => r.id === selectedRoute) : routes;
 
-  // Collect all positions for FitBounds
-  const allPositions = displayRoutes.flatMap(r =>
-    (r.stops || []).filter(s => s.latitude && s.longitude).map(s => [s.latitude, s.longitude])
-  ).concat(
+  // Collect all positions for FitBounds (departure + deliveries + live drivers)
+  const allPositions = displayRoutes.flatMap(r => {
+    const dep = getRouteDeparture(r);
+    const stops = getDeliveryStops(r).filter(s => s.latitude && s.longitude).map(s => [s.latitude, s.longitude]);
+    return dep ? [[dep.latitude, dep.longitude], ...stops] : stops;
+  }).concat(
     locations.filter(l => l.latitude && l.longitude).map(l => [l.latitude, l.longitude])
   );
 
   const defaultCenter = [-23.55, -46.63];
 
-  const stopStats = (stops = []) => ({
-    total: stops.length,
-    delivered: stops.filter(s => s.status === "delivered").length,
-    pending: stops.filter(s => s.status === "pending").length,
-    issue: stops.filter(s => s.status === "issue" || s.status === "not_delivered").length,
-  });
+  const stopStats = (route) => {
+    const stops = getDeliveryStops(route);
+    return {
+      total: stops.length,
+      delivered: stops.filter(s => s.status === "delivered").length,
+      pending: stops.filter(s => s.status === "pending").length,
+      issue: stops.filter(s => s.status === "issue" || s.status === "not_delivered").length,
+    };
+  };
 
   if (loading) {
     return (
@@ -142,7 +158,7 @@ export default function RouteMapView() {
 
         <div className="px-2 pb-2 space-y-1">
           {routes.map((r, idx) => {
-            const stats = stopStats(r.stops);
+            const stats = stopStats(r);
             const progress = stats.total > 0 ? Math.round((stats.delivered / stats.total) * 100) : 0;
             const isSelected = selectedRoute === r.id;
             const color = ROUTE_COLORS[idx % ROUTE_COLORS.length];
@@ -247,8 +263,12 @@ export default function RouteMapView() {
           {/* Route polylines + stop markers */}
           {displayRoutes.map((r, idx) => {
             const color = ROUTE_COLORS[idx % ROUTE_COLORS.length];
-            const validStops = (r.stops || []).filter(s => s.latitude && s.longitude);
-            const straightPositions = validStops.map(s => [s.latitude, s.longitude]);
+            const departure = getRouteDeparture(r);
+            const validStops = getDeliveryStops(r).filter(s => s.latitude && s.longitude);
+            const straightPositions = [
+              ...(departure ? [[departure.latitude, departure.longitude]] : []),
+              ...validStops.map(s => [s.latitude, s.longitude]),
+            ];
             const geometry = parseGeometry(r.route_geometry);
             const hasRealGeometry = Array.isArray(geometry) && geometry.length > 1;
 
@@ -260,6 +280,21 @@ export default function RouteMapView() {
                   straightPositions.length > 1 && (
                     <Polyline positions={straightPositions} color={color} weight={3} opacity={0.75} dashArray="8 4" />
                   )
+                )}
+                {departure && (
+                  <Marker
+                    key={`${r.id}-dep`}
+                    position={[departure.latitude, departure.longitude]}
+                    icon={departureIcon}
+                  >
+                    <Popup>
+                      <div className="min-w-[160px]">
+                        <p className="font-semibold text-sm">🏭 Ponto de Partida</p>
+                        <p className="text-xs text-gray-500">{departure.address}</p>
+                        <p className="text-xs text-gray-400 mt-1">Rota: {r.route_number}</p>
+                      </div>
+                    </Popup>
+                  </Marker>
                 )}
                 {validStops.map((stop, si) => (
                   <Marker
