@@ -8,46 +8,18 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Route, Loader2, Eye, Trash2, Map, Zap, AlertCircle } from "lucide-react";
+import { Plus, Route, Loader2, Eye, Trash2, Map, Zap, AlertCircle, RefreshCcw, Sparkles } from "lucide-react";
 import RouteMapView from "../components/routes/RouteMapView";
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-
-// Real road-based routing via OSRM (free, no API key)
-const OSRM_BASE = "https://router.project-osrm.org";
-
-// Trip optimization via OSRM: returns waypoints in optimal order + total distance
-async function osrmTrip(stops) {
-  const coords = stops.map(s => `${s.longitude},${s.latitude}`).join(";");
-  const url = `${OSRM_BASE}/trip/v1/driving/${coords}?source=first&destination=last&roundtrip=false&geometries=geojson`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.code !== "Ok") throw new Error("OSRM trip failed: " + data.code);
-  // OSRM returns data.waypoints[i] corresponding to the i-th input stop,
-  // with waypoint_index = the stop's position in the optimized trip.
-  // Place each input stop at its output position.
-  const reordered = new Array(stops.length);
-  data.waypoints.forEach((wp, inputIndex) => {
-    reordered[wp.waypoint_index] = stops[inputIndex];
-  });
-  const totalDistanceKm = data.trips[0].distance / 1000;
-  const totalDurationMin = data.trips[0].duration / 60;
-  const geometry = data.trips[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-  return { stops: reordered, totalDistanceKm, totalDurationMin, geometry };
-}
-
-// Ordered route via OSRM (no reordering, just real road geometry + distance)
-async function osrmRoute(stops) {
-  const coords = stops.map(s => `${s.longitude},${s.latitude}`).join(";");
-  const url = `${OSRM_BASE}/route/v1/driving/${coords}?overview=full&geometries=geojson`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.code !== "Ok") throw new Error("OSRM route failed: " + data.code);
-  const totalDistanceKm = data.routes[0].distance / 1000;
-  const totalDurationMin = data.routes[0].duration / 60;
-  const geometry = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-  return { stops, totalDistanceKm, totalDurationMin, geometry };
-}
+import {
+  getRouteGeometry,
+  optimizeStopOrder,
+  parseGeometry,
+  serializeGeometry,
+  formatDuration,
+} from "@/lib/routing";
+import { toast } from "sonner";
 
 export default function Routes() {
   const { companyId, company } = useCompany();
@@ -66,6 +38,7 @@ export default function Routes() {
   const [optimizeRoute, setOptimizeRoute] = useState(true);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [actionRouteId, setActionRouteId] = useState(null);
 
   useEffect(() => { if (companyId) loadData(); }, [companyId]);
 
@@ -130,6 +103,8 @@ export default function Routes() {
     let finalStops = rawStops;
     let totalDistanceKm = null;
     let totalDurationMin = null;
+    let geometryCoords = null;
+    let optimized = false;
 
     // Departure stop — always saved as first stop in the route for reliable map display
     const departureStop = hasDeparture ? {
@@ -143,30 +118,28 @@ export default function Routes() {
     } : null;
 
     if (rawStops.length >= 1) {
-      if (hasDeparture) {
-        const allPoints = [departureStop, ...rawStops];
-        if (optimizeRoute && rawStops.length >= 2) {
-          const result = await osrmTrip(allPoints);
-          // result.stops[0] is the departure (source=first), rest are delivery stops reordered
-          const deliveryStops = result.stops
-            .filter(s => !s._isDeparture)
-            .map((s, i) => ({ ...s, sequence: i + 1 }));
-          finalStops = [departureStop, ...deliveryStops];
-          totalDistanceKm = Math.round(result.totalDistanceKm * 10) / 10;
-          totalDurationMin = Math.round(result.totalDurationMin);
-        } else {
-          const result = await osrmRoute(allPoints);
-          finalStops = [departureStop, ...rawStops.map((s, i) => ({ ...s, sequence: i + 1 }))];
-          totalDistanceKm = Math.round(result.totalDistanceKm * 10) / 10;
-          totalDurationMin = Math.round(result.totalDurationMin);
-        }
-      } else if (rawStops.length >= 2) {
-        const result = optimizeRoute
-          ? await osrmTrip(rawStops)
-          : await osrmRoute(rawStops);
-        finalStops = result.stops.map((s, i) => ({ ...s, sequence: i + 1 }));
-        totalDistanceKm = Math.round(result.totalDistanceKm * 10) / 10;
-        totalDurationMin = Math.round(result.totalDurationMin);
+      const allPoints = hasDeparture ? [departureStop, ...rawStops] : rawStops;
+      // Need at least 2 points for a real geometry; with departure that's the "1 raw stop" case.
+      if (allPoints.length >= 2) {
+        // When a fixed departure exists, optimization is only meaningful with
+        // ≥2 delivery stops to permute. Otherwise just compute geometry.
+        const canOptimize = optimizeRoute && rawStops.length >= 2;
+        const result = canOptimize
+          ? await optimizeStopOrder(allPoints, { fixEnd: false })
+          : await getRouteGeometry(allPoints);
+
+        const orderedStops = canOptimize ? result.stops : allPoints;
+        // Re-sequence non-departure stops as 1..N; keep departure at sequence 0.
+        let deliveryIdx = 0;
+        finalStops = orderedStops.map((s) => {
+          if (s._isDeparture) return { ...s, sequence: 0 };
+          deliveryIdx += 1;
+          return { ...s, sequence: deliveryIdx };
+        });
+        totalDistanceKm = result.distance_km || null;
+        totalDurationMin = result.duration_min || null;
+        geometryCoords = result.coordinates || null;
+        optimized = !!(canOptimize && result.optimized);
       }
     }
 
@@ -182,7 +155,10 @@ export default function Routes() {
       driver_email: driver.email,
       stops: finalStops,
       total_distance_km: totalDistanceKm,
+      estimated_duration_min: totalDurationMin,
       estimated_time_min: totalDurationMin,
+      route_geometry: serializeGeometry(geometryCoords),
+      optimized,
       status: "planned",
       date: new Date().toISOString().split("T")[0],
     };
@@ -225,14 +201,94 @@ export default function Routes() {
 
   const openMapRoute = async (r) => {
     setMapRoute(r);
+    // Prefer the persisted geometry; only re-fetch if missing.
+    const persisted = parseGeometry(r.route_geometry);
+    if (persisted && persisted.length > 1) {
+      setMapGeometry(persisted);
+      return;
+    }
     setMapGeometry(null);
-    // All stops (including departure saved as first stop) sorted by sequence
     const allStops = (r.stops || [])
       .filter(s => s.latitude && s.longitude)
       .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
     if (allStops.length >= 2) {
-      const result = await osrmRoute(allStops);
-      setMapGeometry(result.geometry);
+      const result = await getRouteGeometry(allStops);
+      setMapGeometry(result.coordinates || null);
+    }
+  };
+
+  const recalcGeometry = async (r) => {
+    setActionRouteId(r.id);
+    try {
+      const allStops = (r.stops || [])
+        .filter(s => s.latitude && s.longitude)
+        .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+      if (allStops.length < 2) {
+        toast.error("Rota precisa de pelo menos 2 paradas com geolocalização");
+        return;
+      }
+      const result = await getRouteGeometry(allStops);
+      await base44.entities.Route.update(r.id, {
+        route_geometry: serializeGeometry(result.coordinates),
+        total_distance_km: result.distance_km,
+        estimated_duration_min: result.duration_min,
+        estimated_time_min: result.duration_min,
+      });
+      toast.success(
+        result.fallback
+          ? "Trajeto recalculado em modo simplificado (motor de rotas indisponível)"
+          : `Trajeto atualizado — ${result.distance_km} km • ${formatDuration(result.duration_min)}`
+      );
+      if (mapRoute?.id === r.id) setMapGeometry(result.coordinates);
+      loadData();
+    } catch (err) {
+      console.error(err);
+      toast.error("Falha ao recalcular trajeto");
+    } finally {
+      setActionRouteId(null);
+    }
+  };
+
+  const optimizeOrder = async (r) => {
+    setActionRouteId(r.id);
+    try {
+      const stops = (r.stops || [])
+        .filter(s => s.latitude && s.longitude)
+        .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+      const departure = stops.find(s => s._isDeparture);
+      const deliveries = stops.filter(s => !s._isDeparture);
+      if (deliveries.length < 2) {
+        toast.error("É preciso ao menos 2 paradas de entrega para otimizar");
+        return;
+      }
+      const allPoints = departure ? [departure, ...deliveries] : deliveries;
+      const result = await optimizeStopOrder(allPoints, { fixEnd: false });
+      let deliveryIdx = 0;
+      const newStops = result.stops.map((s) => {
+        if (s._isDeparture) return { ...s, sequence: 0 };
+        deliveryIdx += 1;
+        return { ...s, sequence: deliveryIdx };
+      });
+      await base44.entities.Route.update(r.id, {
+        stops: newStops,
+        route_geometry: serializeGeometry(result.coordinates),
+        total_distance_km: result.distance_km,
+        estimated_duration_min: result.duration_min,
+        estimated_time_min: result.duration_min,
+        optimized: !!result.optimized,
+      });
+      toast.success(
+        result.optimized
+          ? `Ordem otimizada — ${result.distance_km} km • ${formatDuration(result.duration_min)}`
+          : "Não foi possível otimizar agora; ordem mantida"
+      );
+      if (mapRoute?.id === r.id) setMapGeometry(result.coordinates);
+      loadData();
+    } catch (err) {
+      console.error(err);
+      toast.error("Falha ao otimizar a ordem das paradas");
+    } finally {
+      setActionRouteId(null);
     }
   };
 
@@ -283,27 +339,44 @@ export default function Routes() {
               const totalStops = (r.stops || []).filter(s => !s._isDeparture).length;
               const deliveredStops = (r.stops || []).filter(s => !s._isDeparture && s.status === "delivered").length;
               const progress = totalStops > 0 ? Math.round((deliveredStops / totalStops) * 100) : 0;
+              const durationMin = r.estimated_duration_min ?? r.estimated_time_min;
+              const isBusy = actionRouteId === r.id;
               return (
                 <div key={r.id} className="bg-card rounded-xl border border-border p-5">
                   <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <p className="font-semibold">{r.route_number}</p>
-                      <p className="text-xs text-muted-foreground">{r.driver_name} • {r.vehicle_plate}</p>
+                    <div className="flex items-start gap-2">
+                      <div>
+                        <p className="font-semibold">{r.route_number}</p>
+                        <p className="text-xs text-muted-foreground">{r.driver_name} • {r.vehicle_plate}</p>
+                      </div>
+                      {r.optimized && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-primary/10 text-primary border border-primary/20">
+                          <Sparkles className="w-2.5 h-2.5" /> Otimizada
+                        </span>
+                      )}
                     </div>
                     <StatusBadge status={r.status} />
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground mb-3">
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground mb-3 flex-wrap">
                     <span>{totalStops} parada(s)</span>
                     <span>{progress}% concluído</span>
-                    {r.total_distance_km && <span>🛣️ {r.total_distance_km} km</span>}
-                    {r.estimated_time_min && <span>⏱️ {Math.round(r.estimated_time_min / 60)}h{r.estimated_time_min % 60 > 0 ? `${r.estimated_time_min % 60}min` : ""}</span>}
+                    {r.total_distance_km != null && <span>🛣️ {r.total_distance_km} km</span>}
+                    {durationMin != null && <span>⏱️ {formatDuration(durationMin)}</span>}
                   </div>
                   <div className="h-1.5 bg-muted rounded-full overflow-hidden mb-4">
                     <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${progress}%` }} />
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1" onClick={() => openMapRoute(r)}>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button variant="outline" size="sm" className="flex-1 min-w-[110px]" onClick={() => openMapRoute(r)}>
                       <Eye className="w-3 h-3 mr-1" /> Ver Mapa
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={isBusy} onClick={() => optimizeOrder(r)}>
+                      {isBusy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Sparkles className="w-3 h-3 mr-1" />}
+                      Otimizar Ordem
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={isBusy} onClick={() => recalcGeometry(r)}>
+                      {isBusy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCcw className="w-3 h-3 mr-1" />}
+                      Recalcular Trajeto
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => handleDelete(r.id)} className="text-destructive hover:bg-destructive/10">
                       <Trash2 className="w-3 h-3" />
@@ -422,10 +495,12 @@ export default function Routes() {
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Mapa — {mapRoute?.route_number}</DialogTitle>
-            {mapRoute?.total_distance_km && (
+            {mapRoute?.total_distance_km != null && (
               <p className="text-xs text-muted-foreground">
                 🛣️ {mapRoute.total_distance_km} km por estradas reais
-                {mapRoute.estimated_time_min && ` • ⏱️ ~${Math.round(mapRoute.estimated_time_min / 60)}h${mapRoute.estimated_time_min % 60 > 0 ? `${mapRoute.estimated_time_min % 60}min` : ""}`}
+                {(mapRoute.estimated_duration_min ?? mapRoute.estimated_time_min) != null &&
+                  ` • ⏱️ ~${formatDuration(mapRoute.estimated_duration_min ?? mapRoute.estimated_time_min)}`}
+                {mapRoute.optimized && " • ✨ Otimizada"}
               </p>
             )}
           </DialogHeader>
@@ -452,7 +527,7 @@ export default function Routes() {
                     </Marker>
                   ))}
                   {mapGeometry && mapGeometry.length > 1 && (
-                    <Polyline positions={mapGeometry} color="hsl(213, 94%, 45%)" weight={4} />
+                    <Polyline positions={mapGeometry} color="hsl(213, 94%, 45%)" weight={4} opacity={0.85} />
                   )}
                   {!mapGeometry && sortedStops.length > 1 && (
                     <Polyline

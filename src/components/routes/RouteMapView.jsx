@@ -4,9 +4,10 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import StatusBadge from "@/components/shared/StatusBadge";
-import { RefreshCw, Truck, MapPin, Navigation, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { RefreshCw, Truck, MapPin, Navigation, CheckCircle2, Clock, AlertCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import moment from "moment";
+import { parseGeometry, formatDuration } from "@/lib/routing";
 
 // Fix default icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -162,6 +163,18 @@ export default function RouteMapView() {
                 </div>
                 <p className="text-xs text-muted-foreground ml-5 truncate">{r.driver_name} • {r.vehicle_plate}</p>
 
+                <div className="ml-5 mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
+                  {r.total_distance_km != null && <span>🛣️ {r.total_distance_km} km</span>}
+                  {(r.estimated_duration_min ?? r.estimated_time_min) != null && (
+                    <span>⏱️ {formatDuration(r.estimated_duration_min ?? r.estimated_time_min)}</span>
+                  )}
+                  {r.optimized && (
+                    <span className="inline-flex items-center gap-0.5 px-1 py-px rounded-sm bg-primary/10 text-primary text-[10px] font-medium">
+                      <Sparkles className="w-2.5 h-2.5" /> Otimizada
+                    </span>
+                  )}
+                </div>
+
                 <div className="ml-5 mt-2 flex items-center gap-3 text-xs">
                   <span className="flex items-center gap-1 text-green-600">
                     <CheckCircle2 className="w-3 h-3" />{stats.delivered}
@@ -235,12 +248,18 @@ export default function RouteMapView() {
           {displayRoutes.map((r, idx) => {
             const color = ROUTE_COLORS[idx % ROUTE_COLORS.length];
             const validStops = (r.stops || []).filter(s => s.latitude && s.longitude);
-            const polylinePositions = validStops.map(s => [s.latitude, s.longitude]);
+            const straightPositions = validStops.map(s => [s.latitude, s.longitude]);
+            const geometry = parseGeometry(r.route_geometry);
+            const hasRealGeometry = Array.isArray(geometry) && geometry.length > 1;
 
             return (
               <div key={r.id}>
-                {polylinePositions.length > 1 && (
-                  <Polyline positions={polylinePositions} color={color} weight={3} opacity={0.75} dashArray="8 4" />
+                {hasRealGeometry ? (
+                  <Polyline positions={geometry} color={color} weight={4} opacity={0.85} />
+                ) : (
+                  straightPositions.length > 1 && (
+                    <Polyline positions={straightPositions} color={color} weight={3} opacity={0.75} dashArray="8 4" />
+                  )
                 )}
                 {validStops.map((stop, si) => (
                   <Marker
