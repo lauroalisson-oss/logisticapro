@@ -289,3 +289,32 @@ export function haversineKm(lat1, lon1, lat2, lon2) {
 }
 
 export const ROUTING_PROVIDER = PROVIDER;
+
+// Returns the route's departure point or null. Supports both the new schema
+// (route.departure_lat/lng/address as top-level fields) and the legacy schema
+// where the departure was stored as a synthetic stop with _isDeparture: true.
+export function getRouteDeparture(route) {
+  if (!route) return null;
+  if (Number.isFinite(Number(route.departure_lat)) && Number.isFinite(Number(route.departure_lng))) {
+    return {
+      latitude: Number(route.departure_lat),
+      longitude: Number(route.departure_lng),
+      address: route.departure_address || "Base",
+    };
+  }
+  const legacy = (route.stops || []).find((s) => s._isDeparture);
+  if (legacy) {
+    return {
+      latitude: Number(legacy.latitude),
+      longitude: Number(legacy.longitude),
+      address: legacy.address || "Base",
+    };
+  }
+  return null;
+}
+
+// Returns only real delivery stops, filtering out any legacy departure entry.
+export function getDeliveryStops(route) {
+  if (!route) return [];
+  return (route.stops || []).filter((s) => !s._isDeparture);
+}

@@ -18,8 +18,22 @@ import {
   parseGeometry,
   serializeGeometry,
   formatDuration,
+  getRouteDeparture,
+  getDeliveryStops,
 } from "@/lib/routing";
+import L from "leaflet";
 import { toast } from "sonner";
+
+const departureIcon = L.divIcon({
+  className: "",
+  html: `<div style="
+    width:34px;height:34px;border-radius:8px;border:3px solid white;
+    background:#0f172a;box-shadow:0 2px 10px rgba(0,0,0,0.4);
+    display:flex;align-items:center;justify-content:center;font-size:16px;
+  ">🏭</div>`,
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
+});
 
 export default function Routes() {
   const { companyId, company } = useCompany();
@@ -95,46 +109,41 @@ export default function Routes() {
       status: "pending",
     }));
 
-    // Departure point from company settings
+    // Departure point from company settings — used as routing anchor only,
+    // never persisted inside stops[].
     const depLat = company?.departure_lat;
     const depLng = company?.departure_lng;
     const hasDeparture = depLat && depLng;
+    const departure = hasDeparture
+      ? {
+          _isDeparture: true,
+          latitude: depLat,
+          longitude: depLng,
+          address: company.departure_address || "Base",
+        }
+      : null;
 
-    let finalStops = rawStops;
+    let finalStops = rawStops.map((s, i) => ({ ...s, sequence: i + 1 }));
     let totalDistanceKm = null;
     let totalDurationMin = null;
     let geometryCoords = null;
     let optimized = false;
 
-    // Departure stop — always saved as first stop in the route for reliable map display
-    const departureStop = hasDeparture ? {
-      _isDeparture: true,
-      sequence: 0,
-      status: "pending",
-      latitude: depLat,
-      longitude: depLng,
-      client_name: "🏭 Ponto de Partida",
-      address: company.departure_address || "Base",
-    } : null;
-
     if (rawStops.length >= 1) {
-      const allPoints = hasDeparture ? [departureStop, ...rawStops] : rawStops;
-      // Need at least 2 points for a real geometry; with departure that's the "1 raw stop" case.
+      const allPoints = departure ? [departure, ...rawStops] : rawStops;
       if (allPoints.length >= 2) {
-        // When a fixed departure exists, optimization is only meaningful with
-        // ≥2 delivery stops to permute. Otherwise just compute geometry.
         const canOptimize = optimizeRoute && rawStops.length >= 2;
         const result = canOptimize
           ? await optimizeStopOrder(allPoints, { fixEnd: false })
           : await getRouteGeometry(allPoints);
 
         const orderedStops = canOptimize ? result.stops : allPoints;
-        // Re-sequence non-departure stops as 1..N; keep departure at sequence 0.
-        let deliveryIdx = 0;
-        finalStops = orderedStops.map((s) => {
-          if (s._isDeparture) return { ...s, sequence: 0 };
-          deliveryIdx += 1;
-          return { ...s, sequence: deliveryIdx };
+        // Strip the departure marker before persisting; it's stored separately.
+        const deliveriesOnly = orderedStops.filter((s) => !s._isDeparture);
+        finalStops = deliveriesOnly.map((s, i) => {
+          // eslint-disable-next-line no-unused-vars
+          const { _isDeparture, ...rest } = s;
+          return { ...rest, sequence: i + 1 };
         });
         totalDistanceKm = result.distance_km || null;
         totalDurationMin = result.duration_min || null;
@@ -154,6 +163,9 @@ export default function Routes() {
       driver_name: driver.full_name,
       driver_email: driver.email,
       stops: finalStops,
+      departure_lat: departure?.latitude || null,
+      departure_lng: departure?.longitude || null,
+      departure_address: departure?.address || null,
       total_distance_km: totalDistanceKm,
       estimated_duration_min: totalDurationMin,
       estimated_time_min: totalDurationMin,
@@ -201,18 +213,19 @@ export default function Routes() {
 
   const openMapRoute = async (r) => {
     setMapRoute(r);
-    // Prefer the persisted geometry; only re-fetch if missing.
     const persisted = parseGeometry(r.route_geometry);
     if (persisted && persisted.length > 1) {
       setMapGeometry(persisted);
       return;
     }
     setMapGeometry(null);
-    const allStops = (r.stops || [])
+    const departure = getRouteDeparture(r);
+    const deliveries = getDeliveryStops(r)
       .filter(s => s.latitude && s.longitude)
       .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
-    if (allStops.length >= 2) {
-      const result = await getRouteGeometry(allStops);
+    const points = departure ? [departure, ...deliveries] : deliveries;
+    if (points.length >= 2) {
+      const result = await getRouteGeometry(points);
       setMapGeometry(result.coordinates || null);
     }
   };
@@ -220,14 +233,18 @@ export default function Routes() {
   const recalcGeometry = async (r) => {
     setActionRouteId(r.id);
     try {
-      const allStops = (r.stops || [])
+      const departure = getRouteDeparture(r);
+      const deliveries = getDeliveryStops(r)
         .filter(s => s.latitude && s.longitude)
         .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
-      if (allStops.length < 2) {
-        toast.error("Rota precisa de pelo menos 2 paradas com geolocalização");
+      const allPoints = departure
+        ? [{ ...departure, _isDeparture: true }, ...deliveries]
+        : deliveries;
+      if (allPoints.length < 2) {
+        toast.error("Rota precisa de pelo menos 2 pontos com geolocalização");
         return;
       }
-      const result = await getRouteGeometry(allStops);
+      const result = await getRouteGeometry(allPoints);
       await base44.entities.Route.update(r.id, {
         route_geometry: serializeGeometry(result.coordinates),
         total_distance_km: result.distance_km,
@@ -252,22 +269,23 @@ export default function Routes() {
   const optimizeOrder = async (r) => {
     setActionRouteId(r.id);
     try {
-      const stops = (r.stops || [])
+      const departure = getRouteDeparture(r);
+      const deliveries = getDeliveryStops(r)
         .filter(s => s.latitude && s.longitude)
         .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
-      const departure = stops.find(s => s._isDeparture);
-      const deliveries = stops.filter(s => !s._isDeparture);
       if (deliveries.length < 2) {
         toast.error("É preciso ao menos 2 paradas de entrega para otimizar");
         return;
       }
-      const allPoints = departure ? [departure, ...deliveries] : deliveries;
+      const allPoints = departure
+        ? [{ ...departure, _isDeparture: true }, ...deliveries]
+        : deliveries;
       const result = await optimizeStopOrder(allPoints, { fixEnd: false });
-      let deliveryIdx = 0;
-      const newStops = result.stops.map((s) => {
-        if (s._isDeparture) return { ...s, sequence: 0 };
-        deliveryIdx += 1;
-        return { ...s, sequence: deliveryIdx };
+      const reordered = result.stops.filter((s) => !s._isDeparture);
+      const newStops = reordered.map((s, i) => {
+        // eslint-disable-next-line no-unused-vars
+        const { _isDeparture, ...rest } = s;
+        return { ...rest, sequence: i + 1 };
       });
       await base44.entities.Route.update(r.id, {
         stops: newStops,
@@ -336,8 +354,9 @@ export default function Routes() {
 
           <div className="grid lg:grid-cols-2 gap-4">
             {filtered.map(r => {
-              const totalStops = (r.stops || []).filter(s => !s._isDeparture).length;
-              const deliveredStops = (r.stops || []).filter(s => !s._isDeparture && s.status === "delivered").length;
+              const deliveries = getDeliveryStops(r);
+              const totalStops = deliveries.length;
+              const deliveredStops = deliveries.filter(s => s.status === "delivered").length;
               const progress = totalStops > 0 ? Math.round((deliveredStops / totalStops) * 100) : 0;
               const durationMin = r.estimated_duration_min ?? r.estimated_time_min;
               const isBusy = actionRouteId === r.id;
@@ -505,33 +524,50 @@ export default function Routes() {
             )}
           </DialogHeader>
           {mapRoute && (() => {
-            const sortedStops = (mapRoute.stops || [])
+            const departure = getRouteDeparture(mapRoute);
+            const sortedStops = getDeliveryStops(mapRoute)
               .filter(s => s.latitude && s.longitude)
               .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
-            const firstStop = sortedStops[0];
+            const center = departure
+              ? [departure.latitude, departure.longitude]
+              : sortedStops[0]
+                ? [sortedStops[0].latitude, sortedStops[0].longitude]
+                : [-23.55, -46.63];
+            const fallbackPositions = [
+              ...(departure ? [[departure.latitude, departure.longitude]] : []),
+              ...sortedStops.map(s => [s.latitude, s.longitude]),
+            ];
             return (
               <div className="h-96 rounded-lg overflow-hidden">
                 <MapContainer
-                  center={firstStop ? [firstStop.latitude, firstStop.longitude] : [-23.55, -46.63]}
+                  center={center}
                   zoom={10}
                   style={{ height: "100%", width: "100%" }}
                 >
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                  {sortedStops.map((stop, idx) => (
-                    <Marker key={idx} position={[stop.latitude, stop.longitude]}>
+                  {departure && (
+                    <Marker position={[departure.latitude, departure.longitude]} icon={departureIcon}>
                       <Popup>
-                        <strong>{stop._isDeparture ? "🏭 Ponto de Partida" : `#${stop.sequence} ${stop.client_name}`}</strong><br />
-                        {stop.address}
-                        {!stop._isDeparture && <><br /><StatusBadge status={stop.status} /></>}
+                        <strong>🏭 Ponto de Partida</strong><br />
+                        {departure.address}
+                      </Popup>
+                    </Marker>
+                  )}
+                  {sortedStops.map((stop, idx) => (
+                    <Marker key={stop.order_id || idx} position={[stop.latitude, stop.longitude]}>
+                      <Popup>
+                        <strong>#{stop.sequence} {stop.client_name}</strong><br />
+                        {stop.address}<br />
+                        <StatusBadge status={stop.status} />
                       </Popup>
                     </Marker>
                   ))}
                   {mapGeometry && mapGeometry.length > 1 && (
                     <Polyline positions={mapGeometry} color="hsl(213, 94%, 45%)" weight={4} opacity={0.85} />
                   )}
-                  {!mapGeometry && sortedStops.length > 1 && (
+                  {!mapGeometry && fallbackPositions.length > 1 && (
                     <Polyline
-                      positions={sortedStops.map(s => [s.latitude, s.longitude])}
+                      positions={fallbackPositions}
                       color="hsl(213, 94%, 45%)"
                       weight={3}
                       dashArray="6,6"

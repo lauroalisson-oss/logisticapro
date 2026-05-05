@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2, CheckCircle2, XCircle, AlertTriangle, Navigation, Phone, Package, ChevronDown, ChevronUp } from "lucide-react";
+import { getDeliveryStops } from "@/lib/routing";
 
 export default function DriverStops() {
   const [route, setRoute] = useState(null);
@@ -27,9 +28,9 @@ export default function DriverStops() {
     const active = routes.find(r => ["started", "in_progress"].includes(r.status));
     setRoute(active || null);
 
-    // Load order details for items/client info
+    // Load order details for items/client info (skip the synthetic departure entry)
     if (active?.stops?.length) {
-      const orderIds = active.stops.map(s => s.order_id).filter(Boolean);
+      const orderIds = getDeliveryStops(active).map(s => s.order_id).filter(Boolean);
       const orderMap = {};
       await Promise.all(orderIds.map(async (id) => {
         try {
@@ -42,19 +43,23 @@ export default function DriverStops() {
     setLoading(false);
   };
 
-  const updateStopStatus = async (stopIdx, status, proof = null) => {
+  const updateStopStatus = async (stopOrderId, status, proof = null) => {
     if (!route) return;
     setSaving(true);
-    const stops = [...(route.stops || [])];
-    const targetStop = stops[stopIdx];
-    stops[stopIdx] = {
-      ...targetStop,
-      status,
-      delivery_notes: notes || targetStop.delivery_notes,
-      delivered_at: status === "delivered" ? new Date().toISOString() : targetStop.delivered_at,
-      proof_url: proof?.photoUrl || targetStop.proof_url,
-      signature_url: proof?.signatureData || targetStop.signature_url,
-    };
+    const original = route.stops || [];
+    let targetStop = null;
+    const stops = original.map((s) => {
+      if (s.order_id !== stopOrderId) return s;
+      targetStop = s;
+      return {
+        ...s,
+        status,
+        delivery_notes: notes || s.delivery_notes,
+        delivered_at: status === "delivered" ? new Date().toISOString() : s.delivered_at,
+        proof_url: proof?.photoUrl || s.proof_url,
+        signature_url: proof?.signatureData || s.signature_url,
+      };
+    });
     try {
       await base44.entities.Route.update(route.id, { stops });
       if (targetStop?.order_id) {
@@ -102,7 +107,7 @@ export default function DriverStops() {
     );
   }
 
-  const stops = [...(route.stops || [])].sort((a, b) => a.sequence - b.sequence);
+  const stops = getDeliveryStops(route).sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
   const delivered = stops.filter(s => s.status === "delivered").length;
 
   return (
@@ -211,7 +216,7 @@ export default function DriverStops() {
                   <Button
                     size="sm"
                     className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
-                    onClick={() => { setSelectedStop(idx); setProofOpen(true); }}
+                    onClick={() => { setSelectedStop(stop.order_id); setProofOpen(true); }}
                   >
                     <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Entregar
                   </Button>
@@ -219,7 +224,7 @@ export default function DriverStops() {
                     size="sm"
                     variant="outline"
                     className="text-destructive"
-                    onClick={() => { setSelectedStop(idx); setDialogOpen(true); }}
+                    onClick={() => { setSelectedStop(stop.order_id); setDialogOpen(true); }}
                   >
                     <XCircle className="w-3.5 h-3.5" />
                   </Button>
@@ -236,11 +241,13 @@ export default function DriverStops() {
           <DialogHeader>
             <DialogTitle>Confirmar Entrega</DialogTitle>
           </DialogHeader>
-          {selectedStop !== null && stops[selectedStop] && (
+          {selectedStop != null && stops.find(s => s.order_id === selectedStop) && (() => {
+            const stop = stops.find(s => s.order_id === selectedStop);
+            return (
             <div className="space-y-3">
               <div className="bg-muted/30 rounded-lg p-3 text-sm">
-                <p className="font-semibold">{stops[selectedStop].client_name}</p>
-                <p className="text-xs text-muted-foreground">{stops[selectedStop].address}</p>
+                <p className="font-semibold">{stop.client_name}</p>
+                <p className="text-xs text-muted-foreground">{stop.address}</p>
               </div>
               <div>
                 <Label className="text-xs">Observações (opcional)</Label>
@@ -252,7 +259,8 @@ export default function DriverStops() {
                 onCancel={() => { setProofOpen(false); setNotes(""); }}
               />
             </div>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

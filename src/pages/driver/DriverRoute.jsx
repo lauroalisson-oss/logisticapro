@@ -6,6 +6,7 @@ import DriverPinLogin from "./DriverPinLogin";
 import { Button } from "@/components/ui/button";
 import { Loader2, Play, CheckCircle2, MapPin, Navigation, WifiOff } from "lucide-react";
 import { useGpsQueue } from "@/lib/useGpsQueue";
+import { getDeliveryStops } from "@/lib/routing";
 import VehicleInspectionChecklist from "../../components/driver/VehicleInspectionChecklist";
 
 export default function DriverRoute() {
@@ -297,8 +298,9 @@ export default function DriverRoute() {
     );
   }
 
-  const totalStops = (route.stops || []).length;
-  const delivered = (route.stops || []).filter(s => s.status === "delivered").length;
+  const deliveryStops = getDeliveryStops(route);
+  const totalStops = deliveryStops.length;
+  const delivered = deliveryStops.filter(s => s.status === "delivered").length;
   const progress = totalStops > 0 ? Math.round((delivered / totalStops) * 100) : 0;
 
   return (
@@ -377,7 +379,7 @@ export default function DriverRoute() {
 
       {/* Stops Preview */}
       <div className="space-y-2">
-        {[...(route.stops || [])].sort((a, b) => a.sequence - b.sequence).map((stop) => (
+        {[...deliveryStops].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0)).map((stop) => (
           <div key={stop.order_id} className={`p-3 rounded-lg border ${
             stop.status === "delivered" ? "bg-accent/5 border-accent/20" : "bg-card border-border"
           }`}>
