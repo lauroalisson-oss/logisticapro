@@ -218,6 +218,9 @@ export default function RouteMapView() {
                   {(r.estimated_duration_min ?? r.estimated_time_min) != null && (
                     <span>⏱️ {formatDuration(r.estimated_duration_min ?? r.estimated_time_min)}</span>
                   )}
+                  {r.actual_distance_km != null && r.actual_distance_km > 0 && (
+                    <span className="text-emerald-700 font-medium">📍 {r.actual_distance_km} km percorridos</span>
+                  )}
                   {r.optimized && (
                     <span className="inline-flex items-center gap-0.5 px-1 py-px rounded-sm bg-primary/10 text-primary text-[10px] font-medium">
                       <Sparkles className="w-2.5 h-2.5" /> Otimizada
@@ -306,14 +309,19 @@ export default function RouteMapView() {
             const geometry = parseGeometry(r.route_geometry) || lazyGeometry[r.id];
             const hasRealGeometry = Array.isArray(geometry) && geometry.length > 1;
 
+            const driven = parseGeometry(r.driven_path);
+
             return (
               <div key={r.id}>
                 {hasRealGeometry ? (
-                  <Polyline positions={geometry} color={color} weight={4} opacity={0.85} />
+                  <Polyline positions={geometry} color={color} weight={4} opacity={0.6} />
                 ) : (
                   straightPositions.length > 1 && (
-                    <Polyline positions={straightPositions} color={color} weight={3} opacity={0.75} dashArray="8 4" />
+                    <Polyline positions={straightPositions} color={color} weight={3} opacity={0.55} dashArray="8 4" />
                   )
+                )}
+                {Array.isArray(driven) && driven.length > 1 && (
+                  <Polyline positions={driven} color="#059669" weight={5} opacity={0.9} dashArray="2 6" />
                 )}
                 {departure && (
                   <Marker
