@@ -7,7 +7,7 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import { RefreshCw, Truck, MapPin, Navigation, CheckCircle2, Clock, AlertCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import moment from "moment";
-import { parseGeometry, formatDuration, getRouteDeparture, getDeliveryStops } from "@/lib/routing";
+import { parseGeometry, formatDuration, getRouteDeparture, getDeliveryStops, getRouteGeometry, serializeGeometry } from "@/lib/routing";
 
 // Fix default icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -79,6 +79,9 @@ export default function RouteMapView() {
   const [loading, setLoading] = useState(true);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(new Date());
+  // Lazy geometries for routes that don't yet have route_geometry persisted.
+  // Keyed by route id; populated on demand and written back to the entity.
+  const [lazyGeometry, setLazyGeometry] = useState({});
 
   const loadData = async () => {
     const [r, l] = await Promise.all([
@@ -98,6 +101,37 @@ export default function RouteMapView() {
     const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // For each route without a persisted geometry, fetch one and write it back
+  // so the trajectory follows real roads instead of straight lines.
+  useEffect(() => {
+    let cancelled = false;
+    routes.forEach(async (r) => {
+      if (parseGeometry(r.route_geometry)) return;
+      if (lazyGeometry[r.id]) return;
+      const departure = getRouteDeparture(r);
+      const deliveries = getDeliveryStops(r)
+        .filter(s => s.latitude && s.longitude)
+        .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+      const points = departure ? [departure, ...deliveries] : deliveries;
+      if (points.length < 2) return;
+      const result = await getRouteGeometry(points);
+      if (cancelled || !result?.coordinates?.length) return;
+      setLazyGeometry(prev => ({ ...prev, [r.id]: result.coordinates }));
+      try {
+        await base44.entities.Route.update(r.id, {
+          route_geometry: serializeGeometry(result.coordinates),
+          total_distance_km: result.distance_km || r.total_distance_km,
+          estimated_duration_min: result.duration_min || r.estimated_duration_min,
+          estimated_time_min: result.duration_min || r.estimated_time_min,
+        });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[RouteMapView] could not persist geometry:", err?.message || err);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [routes]);
 
   const displayRoutes = selectedRoute ? routes.filter(r => r.id === selectedRoute) : routes;
 
@@ -269,7 +303,7 @@ export default function RouteMapView() {
               ...(departure ? [[departure.latitude, departure.longitude]] : []),
               ...validStops.map(s => [s.latitude, s.longitude]),
             ];
-            const geometry = parseGeometry(r.route_geometry);
+            const geometry = parseGeometry(r.route_geometry) || lazyGeometry[r.id];
             const hasRealGeometry = Array.isArray(geometry) && geometry.length > 1;
 
             return (
