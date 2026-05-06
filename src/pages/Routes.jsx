@@ -381,6 +381,9 @@ export default function Routes() {
                     <span>{progress}% concluído</span>
                     {r.total_distance_km != null && <span>🛣️ {r.total_distance_km} km</span>}
                     {durationMin != null && <span>⏱️ {formatDuration(durationMin)}</span>}
+                    {r.actual_distance_km != null && r.actual_distance_km > 0 && (
+                      <span className="text-emerald-700 font-medium">📍 {r.actual_distance_km} km percorridos</span>
+                    )}
                   </div>
                   <div className="h-1.5 bg-muted rounded-full overflow-hidden mb-4">
                     <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${progress}%` }} />
@@ -519,6 +522,8 @@ export default function Routes() {
                 🛣️ {mapRoute.total_distance_km} km por estradas reais
                 {(mapRoute.estimated_duration_min ?? mapRoute.estimated_time_min) != null &&
                   ` • ⏱️ ~${formatDuration(mapRoute.estimated_duration_min ?? mapRoute.estimated_time_min)}`}
+                {mapRoute.actual_distance_km != null && mapRoute.actual_distance_km > 0 &&
+                  ` • 📍 ${mapRoute.actual_distance_km} km percorridos`}
                 {mapRoute.optimized && " • ✨ Otimizada"}
               </p>
             )}
@@ -563,7 +568,7 @@ export default function Routes() {
                     </Marker>
                   ))}
                   {mapGeometry && mapGeometry.length > 1 && (
-                    <Polyline positions={mapGeometry} color="hsl(213, 94%, 45%)" weight={4} opacity={0.85} />
+                    <Polyline positions={mapGeometry} color="hsl(213, 94%, 45%)" weight={4} opacity={0.6} />
                   )}
                   {!mapGeometry && fallbackPositions.length > 1 && (
                     <Polyline
@@ -571,8 +576,15 @@ export default function Routes() {
                       color="hsl(213, 94%, 45%)"
                       weight={3}
                       dashArray="6,6"
+                      opacity={0.55}
                     />
                   )}
+                  {(() => {
+                    const driven = parseGeometry(mapRoute.driven_path);
+                    return Array.isArray(driven) && driven.length > 1 ? (
+                      <Polyline positions={driven} color="#059669" weight={5} opacity={0.9} dashArray="2 6" />
+                    ) : null;
+                  })()}
                 </MapContainer>
               </div>
             );
