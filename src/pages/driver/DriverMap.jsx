@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { parseGeometry, formatDuration, haversineKm, getRouteDeparture, getDeliveryStops, getRouteGeometry, serializeGeometry } from "@/lib/routing";
 import { tileUrlsForPoints, prefetchTiles, getCachedTileCount } from "@/lib/tileCache";
+import { saveDrivenPath, loadDrivenPath } from "@/lib/drivenPathStore";
 
 function totalDistanceKm(path) {
   if (!Array.isArray(path) || path.length < 2) return 0;
@@ -98,10 +99,16 @@ export default function DriverMap() {
     const active = routes.find(r => ["planned", "started", "in_progress"].includes(r.status));
     setRoute(active || null);
     if (active) {
-      const persisted = parseGeometry(active.driven_path) || [];
-      drivenPathRef.current = persisted;
-      lastFlushedLenRef.current = persisted.length;
-      setDrivenPath(persisted);
+      // Hydrate the driven trail from BOTH sources and keep whichever is
+      // longer — IDB wins when the driver was offline the whole previous
+      // session, server wins when the device was reset.
+      const fromServer = parseGeometry(active.driven_path) || [];
+      const fromLocal = await loadDrivenPath(active.id);
+      const localPath = fromLocal?.path || [];
+      const startingPath = localPath.length >= fromServer.length ? localPath : fromServer;
+      drivenPathRef.current = startingPath;
+      lastFlushedLenRef.current = fromLocal?.last_synced_length ?? fromServer.length;
+      setDrivenPath(startingPath);
     }
     setLoading(false);
     getCachedTileCount().then(setCachedTileCount).catch(() => {});
@@ -109,7 +116,8 @@ export default function DriverMap() {
 
   // Append each new GPS fix to the driven trail, but only if it actually
   // moved enough — otherwise we'd record dozens of duplicate points sitting
-  // at a traffic light.
+  // at a traffic light. Persist to IndexedDB on every fix so the trail
+  // survives app close even when fully offline.
   useEffect(() => {
     if (!driverPos || !route?.id) return;
     const path = drivenPathRef.current;
@@ -121,23 +129,31 @@ export default function DriverMap() {
     const next = [...path, [driverPos[0], driverPos[1]]];
     drivenPathRef.current = next;
     setDrivenPath(next);
+    // Fire-and-forget IDB write — losing a single point on a quota error is
+    // tolerable; what matters is most-of-the-time durability.
+    saveDrivenPath(route.id, next, lastFlushedLenRef.current);
   }, [driverPos, route?.id]);
 
   // Flush new driven_path points back to the route entity periodically.
+  // Sync-up on the server only when actually online; the IDB copy is the
+  // source of truth between sync windows.
   useEffect(() => {
     if (!route?.id) return;
     const interval = setInterval(async () => {
       const path = drivenPathRef.current;
       if (path.length === lastFlushedLenRef.current) return;
-      lastFlushedLenRef.current = path.length;
+      if (!navigator.onLine) return;
+      const targetLen = path.length;
       try {
         await base44.entities.Route.update(route.id, {
           driven_path: serializeGeometry(path),
           actual_distance_km: Math.round(totalDistanceKm(path) * 10) / 10,
         });
+        lastFlushedLenRef.current = targetLen;
+        saveDrivenPath(route.id, path, targetLen);
       } catch (err) {
         // eslint-disable-next-line no-console
-        console.warn("[DriverMap] driven_path flush failed:", err?.message || err);
+        console.warn("[DriverMap] driven_path flush failed (will retry):", err?.message || err);
       }
     }, PATH_FLUSH_INTERVAL_MS);
     return () => clearInterval(interval);

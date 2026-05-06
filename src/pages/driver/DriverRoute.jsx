@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Play, CheckCircle2, MapPin, Navigation, WifiOff } from "lucide-react";
 import { useGpsQueue } from "@/lib/useGpsQueue";
 import { getDeliveryStops } from "@/lib/routing";
+import { useActionQueue } from "@/lib/useActionQueue";
 import VehicleInspectionChecklist from "../../components/driver/VehicleInspectionChecklist";
 
 export default function DriverRoute() {
@@ -22,6 +23,7 @@ export default function DriverRoute() {
   const [gpsActive, setGpsActive] = useState(false);
   const [gpsError, setGpsError] = useState("");
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const { enqueue: enqueueAction, pending: queuePending } = useActionQueue();
   // Refs mirror the latest route/user so the watch callback never reads stale state.
   const routeRef = useRef(null);
   const userRef = useRef(null);
@@ -181,15 +183,21 @@ export default function DriverRoute() {
 
   const confirmDeparture = async () => {
     if (!kmDeparturePhoto) return;
-    await base44.entities.Route.update(route.id, {
+    const payload = {
       status: "in_progress",
       started_at: new Date().toISOString(),
       km_departure_photo: kmDeparturePhoto,
+    };
+    // Optimistic local update so we move on even when offline.
+    setRoute((prev) => prev ? { ...prev, ...payload } : prev);
+    await enqueueAction({
+      type: "ROUTE_UPDATE",
+      routeId: route.id,
+      payload,
     });
     // Auto-activate GPS
     activateGPS();
     setShowKmDeparture(false);
-    loadRoute();
   };
 
   const handleCompleteRoute = () => {
@@ -198,14 +206,29 @@ export default function DriverRoute() {
 
   const confirmArrival = async () => {
     if (!kmArrivalPhoto) return;
-    await base44.entities.Route.update(route.id, {
+    const payload = {
       status: "completed",
       completed_at: new Date().toISOString(),
       km_arrival_photo: kmArrivalPhoto,
+    };
+    // Optimistic local update — driver moves to "concluída" immediately.
+    setRoute((prev) => prev ? { ...prev, ...payload } : prev);
+    await enqueueAction({
+      type: "ROUTE_UPDATE",
+      routeId: route.id,
+      payload,
     });
-    const existing = await base44.entities.DriverLocation.filter({ driver_email: user.email });
-    if (existing.length > 0) {
-      await base44.entities.DriverLocation.update(existing[0].id, { is_active: false });
+    // Best-effort cleanup of the live location pin (skips silently offline —
+    // is_active will be cleared the next time the dispatcher's view loads).
+    if (navigator.onLine) {
+      try {
+        const existing = await base44.entities.DriverLocation.filter({ driver_email: user.email });
+        if (existing.length > 0) {
+          await base44.entities.DriverLocation.update(existing[0].id, { is_active: false });
+        }
+      } catch {
+        // ignore — non-critical
+      }
     }
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
@@ -217,7 +240,6 @@ export default function DriverRoute() {
     }
     setGpsActive(false);
     setShowKmArrival(false);
-    loadRoute();
   };
 
   if (!pinVerified) return <DriverPinLogin onSuccess={handlePinSuccess} />;
@@ -325,6 +347,12 @@ export default function DriverRoute() {
           <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-600 font-medium">
             <WifiOff className="w-3.5 h-3.5" />
             Offline — posições salvas localmente, sincronizando ao reconectar
+          </div>
+        )}
+        {queuePending > 0 && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-600 font-medium">
+            <WifiOff className="w-3.5 h-3.5" />
+            {queuePending} alteração(ões) aguardando para sincronizar
           </div>
         )}
         {gpsError && (

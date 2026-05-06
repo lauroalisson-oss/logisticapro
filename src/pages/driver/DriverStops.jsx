@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import StatusBadge from "../../components/shared/StatusBadge";
 import DeliveryProof from "../../components/driver/DeliveryProof";
@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, CheckCircle2, XCircle, AlertTriangle, Navigation, Phone, Package, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, AlertTriangle, Navigation, Phone, Package, ChevronDown, ChevronUp, CloudOff } from "lucide-react";
 import { getDeliveryStops } from "@/lib/routing";
+import { useActionQueue } from "@/lib/useActionQueue";
 
 export default function DriverStops() {
   const [route, setRoute] = useState(null);
@@ -19,8 +20,19 @@ export default function DriverStops() {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [expandedStops, setExpandedStops] = useState({});
+  const { enqueue: enqueueAction, pending: queuePending } = useActionQueue();
 
   useEffect(() => { loadRoute(); }, []);
+
+  // After the queue drains, refresh the route from the server so what we see
+  // matches what was just synced (e.g., dispatcher might have edited it).
+  const prevPendingRef = useRef(queuePending);
+  useEffect(() => {
+    if (prevPendingRef.current > 0 && queuePending === 0 && navigator.onLine) {
+      loadRoute();
+    }
+    prevPendingRef.current = queuePending;
+  }, [queuePending]);
 
   const loadRoute = async () => {
     const me = await base44.auth.me();
@@ -46,44 +58,55 @@ export default function DriverStops() {
   const updateStopStatus = async (stopOrderId, status, proof = null) => {
     if (!route) return;
     setSaving(true);
-    const original = route.stops || [];
-    let targetStop = null;
-    const stops = original.map((s) => {
-      if (s.order_id !== stopOrderId) return s;
-      targetStop = s;
-      return {
-        ...s,
-        status,
-        delivery_notes: notes || s.delivery_notes,
-        delivered_at: status === "delivered" ? new Date().toISOString() : s.delivered_at,
-        proof_url: proof?.photoUrl || s.proof_url,
-        signature_url: proof?.signatureData || s.signature_url,
-      };
-    });
+
+    const now = new Date().toISOString();
+    // Build the per-stop patch — only set keys we actually mean to change so
+    // a re-flush after the dispatcher edited the route doesn't clobber
+    // unrelated fields.
+    const stopFields = { status };
+    if (notes) stopFields.delivery_notes = notes;
+    if (status === "delivered") stopFields.delivered_at = now;
+    if (proof?.photoUrl) stopFields.proof_url = proof.photoUrl;
+    if (proof?.signatureData) stopFields.signature_url = proof.signatureData;
+
+    const orderStatus = status === "delivered" ? "delivered"
+      : status === "not_delivered" ? "not_delivered"
+      : status === "issue" ? "issue" : null;
+    const orderUpdate = orderStatus ? {
+      status: orderStatus,
+      ...(status === "delivered" ? { delivered_at: now } : {}),
+      ...(notes ? { delivery_notes: notes } : {}),
+    } : null;
+
+    // Optimistic local update so the driver sees the change immediately
+    // even when offline.
+    setRoute((prev) => prev ? {
+      ...prev,
+      stops: (prev.stops || []).map((s) =>
+        s.order_id === stopOrderId ? { ...s, ...stopFields } : s
+      ),
+    } : prev);
+
     try {
-      await base44.entities.Route.update(route.id, { stops });
-      if (targetStop?.order_id) {
-        const orderStatus = status === "delivered" ? "delivered" : status === "not_delivered" ? "not_delivered" : status === "issue" ? "issue" : null;
-        if (orderStatus) {
-          await base44.entities.Order.update(targetStop.order_id, {
-            status: orderStatus,
-            delivered_at: status === "delivered" ? new Date().toISOString() : undefined,
-            delivery_notes: notes || undefined,
-          });
-        }
-      }
+      await enqueueAction({
+        type: "STOP_STATUS",
+        routeId: route.id,
+        stopOrderId,
+        payload: { stopFields, orderUpdate },
+      });
     } catch (err) {
-      console.error("Falha ao atualizar parada:", err);
-      alert("Erro ao salvar. Verifique sua conexão.");
+      // eslint-disable-next-line no-console
+      console.error("[DriverStops] could not enqueue action:", err);
+      alert("Não foi possível salvar a alteração. Tente novamente.");
       setSaving(false);
       return;
     }
+
     setSaving(false);
     setDialogOpen(false);
     setProofOpen(false);
     setNotes("");
     setSelectedStop(null);
-    loadRoute();
   };
 
   const openNavigate = (stop) => {
@@ -116,6 +139,13 @@ export default function DriverStops() {
         <h2 className="font-bold text-lg">Paradas — {route.route_number}</h2>
         <span className="text-sm text-muted-foreground">{delivered}/{stops.length} entregues</span>
       </div>
+
+      {queuePending > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+          <CloudOff className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>{queuePending} alteração(ões) aguardando sincronização — serão enviadas quando a internet voltar.</span>
+        </div>
+      )}
 
       {stops.map((stop, idx) => {
         const order = orders[stop.order_id];
