@@ -92,8 +92,10 @@ export default function DriverRoute() {
     const routes = await base44.entities.Route.filter({ driver_email: me.email });
     const active = routes.find(r => ["planned", "started", "in_progress"].includes(r.status));
     setRoute(active || null);
-    if (active?.km_departure_photo) setKmDeparturePhoto(active.km_departure_photo);
-    if (active?.km_arrival_photo) setKmArrivalPhoto(active.km_arrival_photo);
+    // Photos kept as { url, proofId? }; once the server has them only `url`
+    // is set. Newly captured photos carry a proofId until the queue flushes.
+    if (active?.km_departure_photo) setKmDeparturePhoto({ url: active.km_departure_photo });
+    if (active?.km_arrival_photo) setKmArrivalPhoto({ url: active.km_arrival_photo });
     setLoading(false);
   };
 
@@ -186,9 +188,19 @@ export default function DriverRoute() {
     const payload = {
       status: "in_progress",
       started_at: new Date().toISOString(),
-      km_departure_photo: kmDeparturePhoto,
     };
-    // Optimistic local update so we move on even when offline.
+    // If the photo is already a server URL (legacy) include it directly;
+    // otherwise the queue will resolve the proofId at flush time.
+    if (!kmDeparturePhoto.proofId && kmDeparturePhoto.url) {
+      payload.km_departure_photo = kmDeparturePhoto.url;
+    }
+    if (kmDeparturePhoto.proofId) {
+      payload.kmPhotoRef = kmDeparturePhoto.proofId;
+      payload.kmPhotoField = "km_departure_photo";
+      // Optimistic local placeholder so the UI shows the captured image
+      // even before the upload finishes.
+      payload.km_departure_photo = kmDeparturePhoto.url;
+    }
     setRoute((prev) => prev ? { ...prev, ...payload } : prev);
     await enqueueAction({
       type: "ROUTE_UPDATE",
@@ -209,9 +221,15 @@ export default function DriverRoute() {
     const payload = {
       status: "completed",
       completed_at: new Date().toISOString(),
-      km_arrival_photo: kmArrivalPhoto,
     };
-    // Optimistic local update — driver moves to "concluída" immediately.
+    if (!kmArrivalPhoto.proofId && kmArrivalPhoto.url) {
+      payload.km_arrival_photo = kmArrivalPhoto.url;
+    }
+    if (kmArrivalPhoto.proofId) {
+      payload.kmPhotoRef = kmArrivalPhoto.proofId;
+      payload.kmPhotoField = "km_arrival_photo";
+      payload.km_arrival_photo = kmArrivalPhoto.url;
+    }
     setRoute((prev) => prev ? { ...prev, ...payload } : prev);
     await enqueueAction({
       type: "ROUTE_UPDATE",
@@ -268,8 +286,11 @@ export default function DriverRoute() {
           </div>
           <OdometerCamera
             label="Foto do Hodômetro — Saída"
-            onCapture={setKmDeparturePhoto}
-            existingUrl={kmDeparturePhoto}
+            kind="km_departure"
+            routeId={route?.id}
+            driverEmail={user?.email}
+            onCapture={(p) => p && setKmDeparturePhoto({ url: p.previewUrl, proofId: p.proofId, bundleHash: p.bundleHash, capturedAt: p.capturedAt })}
+            existingUrl={kmDeparturePhoto?.url}
           />
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-800">
             📍 O GPS será ativado automaticamente ao confirmar a saída.
@@ -296,8 +317,11 @@ export default function DriverRoute() {
           </div>
           <OdometerCamera
             label="Foto do Hodômetro — Chegada"
-            onCapture={setKmArrivalPhoto}
-            existingUrl={kmArrivalPhoto}
+            kind="km_arrival"
+            routeId={route?.id}
+            driverEmail={user?.email}
+            onCapture={(p) => p && setKmArrivalPhoto({ url: p.previewUrl, proofId: p.proofId, bundleHash: p.bundleHash, capturedAt: p.capturedAt })}
+            existingUrl={kmArrivalPhoto?.url}
           />
         </div>
         <div className="p-4 border-t border-border flex gap-3">

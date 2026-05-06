@@ -60,14 +60,25 @@ export default function DriverStops() {
     setSaving(true);
 
     const now = new Date().toISOString();
-    // Build the per-stop patch — only set keys we actually mean to change so
-    // a re-flush after the dispatcher edited the route doesn't clobber
-    // unrelated fields.
     const stopFields = { status };
     if (notes) stopFields.delivery_notes = notes;
     if (status === "delivered") stopFields.delivered_at = now;
-    if (proof?.photoUrl) stopFields.proof_url = proof.photoUrl;
-    if (proof?.signatureData) stopFields.signature_url = proof.signatureData;
+
+    // Show the local previews immediately while the action queue awaits
+    // upload. These previews are object URLs from the Blob; they're valid
+    // for the current session so the driver can re-open the dialog and
+    // see what they captured. The action queue will overwrite them with
+    // the server URLs after the next successful flush.
+    if (proof?.photoPreviewUrl) stopFields.proof_url = proof.photoPreviewUrl;
+    if (proof?.signaturePreviewUrl) stopFields.signature_url = proof.signaturePreviewUrl;
+    if (proof?.proofId) {
+      stopFields.proof_metadata = {
+        proof_id: proof.proofId,
+        bundle_hash: proof.bundleHash,
+        captured_at: proof.capturedAt,
+        sync_status: "pending",
+      };
+    }
 
     const orderStatus = status === "delivered" ? "delivered"
       : status === "not_delivered" ? "not_delivered"
@@ -78,8 +89,7 @@ export default function DriverStops() {
       ...(notes ? { delivery_notes: notes } : {}),
     } : null;
 
-    // Optimistic local update so the driver sees the change immediately
-    // even when offline.
+    // Optimistic local update — driver sees the change immediately, online or off.
     setRoute((prev) => prev ? {
       ...prev,
       stops: (prev.stops || []).map((s) =>
@@ -92,7 +102,11 @@ export default function DriverStops() {
         type: "STOP_STATUS",
         routeId: route.id,
         stopOrderId,
-        payload: { stopFields, orderUpdate },
+        payload: {
+          stopFields,
+          orderUpdate,
+          proofRef: proof?.proofId || null,
+        },
       });
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -285,6 +299,9 @@ export default function DriverStops() {
               </div>
               <DeliveryProof
                 uploading={saving}
+                routeId={route.id}
+                stopOrderId={selectedStop}
+                driverEmail={route.driver_email}
                 onConfirm={(proof) => updateStopStatus(selectedStop, "delivered", proof)}
                 onCancel={() => { setProofOpen(false); setNotes(""); }}
               />
