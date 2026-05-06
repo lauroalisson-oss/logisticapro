@@ -69,9 +69,9 @@ export default function Sidebar() {
               <Truck className="w-5 h-5 text-sidebar-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-base font-bold text-sidebar-primary-foreground tracking-tight">LogiFlow</h1>
+              <h1 className="text-base font-bold text-sidebar-primary-foreground tracking-tight">Minha Rota Pro</h1>
               <p className="text-[10px] text-sidebar-foreground/60 uppercase tracking-widest">
-                {showAdmin ? "Plataforma" : "Logistics"}
+                {showAdmin ? "Plataforma" : "Logística"}
               </p>
             </div>
           </div>
