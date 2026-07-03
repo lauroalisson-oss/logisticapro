@@ -389,3 +389,25 @@ export function getDeliveryStops(route) {
   if (!route) return [];
   return (route.stops || []).filter((s) => !s._isDeparture);
 }
+
+// Departure point configured on the company (the depot/base). Used as the
+// route origin whenever a route itself doesn't carry one — e.g. routes
+// created before the departure was set in Settings.
+export function getCompanyDeparture(company) {
+  if (!company) return null;
+  if (Number.isFinite(Number(company.departure_lat)) && Number.isFinite(Number(company.departure_lng))) {
+    return {
+      latitude: Number(company.departure_lat),
+      longitude: Number(company.departure_lng),
+      address: company.departure_address || "Base",
+    };
+  }
+  return null;
+}
+
+// The origin a route should start from: the route's own departure if it has
+// one, otherwise the company depot. Keeps every trajectory anchored to the
+// base even for older routes saved without a departure.
+export function resolveRouteDeparture(route, company) {
+  return getRouteDeparture(route) || getCompanyDeparture(company);
+}
