@@ -8,6 +8,7 @@ import { RefreshCw, Truck, MapPin, Navigation, CheckCircle2, Clock, AlertCircle,
 import { Button } from "@/components/ui/button";
 import moment from "moment";
 import { parseGeometry, formatDuration, getRouteDeparture, getDeliveryStops, getRouteGeometry, serializeGeometry } from "@/lib/routing";
+import { useCompany } from "@/lib/CompanyContext";
 
 // Fix default icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -74,6 +75,7 @@ function FitBounds({ positions }) {
 }
 
 export default function RouteMapView() {
+  const { companyId } = useCompany();
   const [routes, setRoutes] = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -84,9 +86,10 @@ export default function RouteMapView() {
   const [lazyGeometry, setLazyGeometry] = useState({});
 
   const loadData = async () => {
+    if (!companyId) return;
     const [r, l] = await Promise.all([
-      base44.entities.Route.filter({ status: ["started", "in_progress", "planned"] }),
-      base44.entities.DriverLocation.filter({ is_active: true }),
+      base44.entities.Route.filter({ company_id: companyId, status: ["started", "in_progress", "planned"] }),
+      base44.entities.DriverLocation.filter({ company_id: companyId, is_active: true }),
     ]);
     // include planned too — filter active ones
     const active = r.filter(rt => ["started", "in_progress", "planned"].includes(rt.status));
@@ -100,7 +103,7 @@ export default function RouteMapView() {
     loadData();
     const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [companyId]);
 
   // For each route without a persisted geometry, fetch one and write it back
   // so the trajectory follows real roads instead of straight lines.

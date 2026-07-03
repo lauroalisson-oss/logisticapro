@@ -13,31 +13,13 @@ export default function DriverActivation({ user, onActivated }) {
 
   const activate = async () => {
     try {
-      // Fetch the pending invite from the DB (works on any device)
-      const res = await base44.functions.invoke('getDriverInvite', {});
-      const invite = res.data?.invite;
+      // A ativação inteira roda no backend (activateDriver): valida o
+      // convite pendente pelo email do usuário e aplica os dados do
+      // convite — o cliente não escolhe company_id nem is_driver.
+      const res = await base44.functions.invoke('activateDriver', {});
+      if (!res.data?.ok) throw new Error(res.data?.error || 'Falha na ativação');
 
-      const payload = {
-        is_driver: true,
-        driver_pin: invite?.driver_pin || generatePin(),
-      };
-      if (invite?.full_name) payload.full_name = invite.full_name;
-      if (invite?.phone) payload.phone = invite.phone;
-      if (invite?.cpf) payload.cpf = invite.cpf;
-      if (invite?.license_number) payload.license_number = invite.license_number;
-      if (invite?.license_category) payload.license_category = invite.license_category;
-      if (invite?.license_points) payload.license_points = Number(invite.license_points);
-      if (invite?.company_id) payload.company_id = invite.company_id;
-
-      // Apply to user account
-      await base44.auth.updateMe(payload);
-
-      // Mark invite as activated
-      if (invite?.id) {
-        await base44.entities.DriverInvite.update(invite.id, { status: 'activated' });
-      }
-
-      setPin(payload.driver_pin);
+      setPin(res.data.driver_pin);
       setStatus("done");
 
       setTimeout(() => onActivated(), 3000);
@@ -88,16 +70,4 @@ export default function DriverActivation({ user, onActivated }) {
       </div>
     </div>
   );
-}
-
-function generatePin() {
-  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
-    const max = 1_000_000;
-    const limit = Math.floor(0x100000000 / max) * max;
-    const buf = new Uint32Array(1);
-    let n;
-    do { crypto.getRandomValues(buf); n = buf[0]; } while (n >= limit);
-    return String(n % max).padStart(6, "0");
-  }
-  return String(Math.floor(100000 + Math.random() * 900000));
 }
