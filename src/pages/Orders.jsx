@@ -73,7 +73,9 @@ export default function Orders() {
       () => base44.entities.Order.filter({ company_id: companyId }),
       () => base44.entities.Product.filter({ company_id: companyId }),
       () => base44.entities.Vehicle.filter({ company_id: companyId }),
-      () => base44.entities.User.filter({ company_id: companyId }),
+      // Listar User direto exige permissão que usuários comuns não têm
+      // (403) — a função backend roda com service role e valida a empresa.
+      () => base44.functions.invoke('getCompanyDrivers', { company_id: companyId }).then(r => r.data?.users || []),
       () => base44.entities.DriverInvite.filter({ company_id: companyId }),
     ]);
     setOrders(o);
