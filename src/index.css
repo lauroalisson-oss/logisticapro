@@ -87,3 +87,11 @@
     font-family: var(--font-sans);
   }
 }
+/* Leaflet cria panes internos com z-index de até 1000 no stacking context
+   global, o que faz o mapa sobrepor sidebar, dialogs e dropdowns (que usam
+   z-40/z-50). Isolar o stacking context do container mantém esses z-index
+   internos ao mapa. */
+.leaflet-container {
+  isolation: isolate;
+  z-index: 0;
+}

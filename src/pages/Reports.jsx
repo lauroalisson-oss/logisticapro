@@ -47,7 +47,9 @@ export default function Reports() {
       () => base44.entities.Route.filter({ company_id: companyId }),
       () => base44.entities.Load.filter({ company_id: companyId }),
       () => base44.entities.Alert.filter({ company_id: companyId }),
-      () => base44.entities.User.filter({ company_id: companyId }),
+      // Listar User direto exige permissão que usuários comuns não têm
+      // (403) — a função backend roda com service role e valida a empresa.
+      () => base44.functions.invoke('getCompanyDrivers', { company_id: companyId }).then(r => r.data?.users || []),
       () => base44.entities.FuelRecord.filter({ company_id: companyId }, "-date"),
     ]);
     setOrders(o); setVehicles(v); setRoutes(r); setLoads(l);

@@ -260,10 +260,81 @@ export function parseGeometry(value) {
   return null;
 }
 
-// Serialize a coordinates array for persistence.
+// Base44 rejeita campos de texto acima de um tamanho máximo ("Field
+// exceeds the maximum allowed size"), então a geometria persistida precisa
+// caber nesse limite. 20k chars ≈ 850 pontos com 5 casas decimais — mais
+// do que suficiente para desenhar a rota no mapa.
+const GEOMETRY_MAX_CHARS = 20000;
+
+function roundCoord(v) {
+  // toFixed + Number garante no máximo 5 casas (≈1m) no JSON serializado.
+  return Number(Number(v).toFixed(5));
+}
+
+// Distância perpendicular (km) do ponto p ao segmento a-b, em projeção
+// equiretangular — precisão suficiente para simplificação de polylines.
+function perpendicularDistanceKm(p, a, b) {
+  const midLat = ((a[0] + b[0]) / 2) * (Math.PI / 180);
+  const kmPerDegLat = 110.574;
+  const kmPerDegLng = 111.32 * Math.cos(midLat);
+  const px = (p[1] - a[1]) * kmPerDegLng, py = (p[0] - a[0]) * kmPerDegLat;
+  const bx = (b[1] - a[1]) * kmPerDegLng, by = (b[0] - a[0]) * kmPerDegLat;
+  const lenSq = bx * bx + by * by;
+  if (lenSq === 0) return Math.sqrt(px * px + py * py);
+  const t = Math.max(0, Math.min(1, (px * bx + py * by) / lenSq));
+  const dx = px - t * bx, dy = py - t * by;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Douglas-Peucker iterativo (sem recursão — driven_path pode ter milhares
+// de pontos). Mantém sempre o primeiro e o último ponto.
+function douglasPeucker(points, toleranceKm) {
+  if (points.length <= 2) return points;
+  const keep = new Uint8Array(points.length);
+  keep[0] = keep[points.length - 1] = 1;
+  const stack = [[0, points.length - 1]];
+  while (stack.length) {
+    const [start, end] = stack.pop();
+    let maxDist = 0, maxIdx = -1;
+    for (let i = start + 1; i < end; i++) {
+      const d = perpendicularDistanceKm(points[i], points[start], points[end]);
+      if (d > maxDist) { maxDist = d; maxIdx = i; }
+    }
+    if (maxIdx !== -1 && maxDist > toleranceKm) {
+      keep[maxIdx] = 1;
+      stack.push([start, maxIdx], [maxIdx, end]);
+    }
+  }
+  return points.filter((_, i) => keep[i]);
+}
+
+// Serialize a coordinates array for persistence. Arredonda para 5 casas,
+// remove pontos consecutivos duplicados e simplifica progressivamente até
+// o JSON caber no limite de tamanho de campo do Base44.
 export function serializeGeometry(coordinates) {
   if (!Array.isArray(coordinates) || !coordinates.length) return null;
-  return JSON.stringify(coordinates);
+  let pts = [];
+  for (const c of coordinates) {
+    if (!Array.isArray(c) || !Number.isFinite(Number(c[0])) || !Number.isFinite(Number(c[1]))) continue;
+    const p = [roundCoord(c[0]), roundCoord(c[1])];
+    const last = pts[pts.length - 1];
+    if (last && last[0] === p[0] && last[1] === p[1]) continue;
+    pts.push(p);
+  }
+  if (!pts.length) return null;
+
+  let json = JSON.stringify(pts);
+  for (const tolMeters of [5, 10, 25, 50, 100, 250, 500]) {
+    if (json.length <= GEOMETRY_MAX_CHARS) return json;
+    pts = douglasPeucker(pts, tolMeters / 1000);
+    json = JSON.stringify(pts);
+  }
+  // Último recurso: reduz pela metade até caber, preservando as pontas.
+  while (json.length > GEOMETRY_MAX_CHARS && pts.length > 2) {
+    pts = pts.filter((_, i) => i % 2 === 0 || i === pts.length - 1);
+    json = JSON.stringify(pts);
+  }
+  return json;
 }
 
 export function formatDuration(minutes) {
