@@ -177,8 +177,16 @@ export default function Routes() {
       date: new Date().toISOString().split("T")[0],
     };
 
-    await base44.entities.Route.create(route);
-    await base44.entities.Load.update(load.id, { status: "ready" });
+    try {
+      await base44.entities.Route.create(route);
+      await base44.entities.Load.update(load.id, { status: "ready" });
+    } catch (err) {
+      // Sem isso a falha deixava o botão preso em "Calculando rota real...".
+      console.error("Falha ao criar rota:", err);
+      setCreateError(err?.message || "Falha ao criar a rota. Tente novamente.");
+      setCreating(false);
+      return;
+    }
 
     setDialogOpen(false);
     setSelectedLoad("");
