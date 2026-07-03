@@ -21,6 +21,7 @@ import {
   getRouteDeparture,
   resolveRouteDeparture,
   getDeliveryStops,
+  SUPPORTS_AVOID_TOLLS,
 } from "@/lib/routing";
 import L from "leaflet";
 import { toast } from "sonner";
@@ -63,6 +64,7 @@ export default function Routes() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [activeTab, setActiveTab] = useState("list");
   const [optimizeRoute, setOptimizeRoute] = useState(true);
+  const [avoidTolls, setAvoidTolls] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
   const [actionRouteId, setActionRouteId] = useState(null);
@@ -158,8 +160,8 @@ export default function Routes() {
       if (allPoints.length >= 2) {
         const canOptimize = optimizeRoute && rawStops.length >= 2;
         const result = canOptimize
-          ? await optimizeStopOrder(allPoints, { fixEnd: false })
-          : await getRouteGeometry(allPoints);
+          ? await optimizeStopOrder(allPoints, { fixEnd: false, avoidTolls })
+          : await getRouteGeometry(allPoints, { avoidTolls });
 
         const orderedStops = canOptimize ? result.stops : allPoints;
         // Strip the departure marker before persisting; it's stored separately.
@@ -195,6 +197,7 @@ export default function Routes() {
       estimated_time_min: totalDurationMin,
       route_geometry: serializeGeometry(geometryCoords),
       optimized,
+      avoid_tolls: avoidTolls,
       status: "planned",
       date: new Date().toISOString().split("T")[0],
     };
@@ -213,6 +216,7 @@ export default function Routes() {
     setDialogOpen(false);
     setSelectedLoad("");
     setSelectedDriver("");
+    setAvoidTolls(false);
     setCreating(false);
     loadData();
   };
@@ -257,7 +261,7 @@ export default function Routes() {
       .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
     const points = departure ? [departure, ...deliveries] : deliveries;
     if (points.length >= 2) {
-      const result = await getRouteGeometry(points);
+      const result = await getRouteGeometry(points, { avoidTolls: !!r.avoid_tolls });
       setMapGeometry(result.coordinates || null);
     }
   };
@@ -276,7 +280,7 @@ export default function Routes() {
         toast.error("Rota precisa de pelo menos 2 pontos com geolocalização");
         return;
       }
-      const result = await getRouteGeometry(allPoints);
+      const result = await getRouteGeometry(allPoints, { avoidTolls: !!r.avoid_tolls });
       await base44.entities.Route.update(r.id, {
         route_geometry: serializeGeometry(result.coordinates),
         total_distance_km: result.distance_km,
@@ -319,7 +323,7 @@ export default function Routes() {
       const allPoints = departure
         ? [{ ...departure, _isDeparture: true }, ...deliveries]
         : deliveries;
-      const result = await optimizeStopOrder(allPoints, { fixEnd: false });
+      const result = await optimizeStopOrder(allPoints, { fixEnd: false, avoidTolls: !!r.avoid_tolls });
       const reordered = result.stops.filter((s) => !s._isDeparture);
       const newStops = reordered.map((s, i) => {
         // eslint-disable-next-line no-unused-vars
@@ -533,8 +537,31 @@ export default function Routes() {
               />
               <label htmlFor="optimize" className="text-sm cursor-pointer flex-1">
                 <span className="font-medium flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-primary" /> Otimizar Rota por Estradas Reais</span>
-                <span className="block text-xs text-muted-foreground">Usa o motor OSRM para calcular a melhor sequência baseada em distâncias reais de estrada</span>
+                <span className="block text-xs text-muted-foreground">Calcula a melhor sequência baseada em distâncias reais de estrada</span>
               </label>
+            </div>
+
+            {/* Preferência de pedágio */}
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1.5">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="avoidTolls"
+                  checked={avoidTolls}
+                  onChange={e => setAvoidTolls(e.target.checked)}
+                  className="w-4 h-4 accent-amber-600"
+                />
+                <label htmlFor="avoidTolls" className="text-sm cursor-pointer flex-1">
+                  <span className="font-medium flex items-center gap-1.5">🛣️ Evitar pedágios</span>
+                  <span className="block text-xs text-muted-foreground">Calcula o trajeto priorizando estradas sem pedágio</span>
+                </label>
+              </div>
+              {avoidTolls && !SUPPORTS_AVOID_TOLLS && (
+                <div className="flex items-start gap-1.5 text-xs text-amber-800">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span>O motor de rotas atual (OSRM) não evita pedágios. Configure o provedor Mapbox para ativar este recurso; por enquanto a rota será calculada normalmente.</span>
+                </div>
+              )}
             </div>
 
             {createError && (
@@ -570,6 +597,7 @@ export default function Routes() {
                 {mapRoute.actual_distance_km != null && mapRoute.actual_distance_km > 0 &&
                   ` • 📍 ${mapRoute.actual_distance_km} km percorridos`}
                 {mapRoute.optimized && " • ✨ Otimizada"}
+                {mapRoute.avoid_tolls && " • 🛣️ Sem pedágio"}
               </p>
             )}
           </DialogHeader>

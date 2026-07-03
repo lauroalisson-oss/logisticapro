@@ -89,17 +89,19 @@ async function osrmTrip(stops, { fixEnd = false, timeout } = {}) {
   };
 }
 
-function mapboxExcludeParam(avoidPolygons) {
-  if (!avoidPolygons || !avoidPolygons.length) return null;
-  // Mapbox expects polygon(lng1 lat1, lng2 lat2, ...); list separated by ';'
-  return avoidPolygons
-    .map((poly) =>
-      `polygon(${poly.map(([lat, lng]) => `${lng} ${lat}`).join(",")})`
-    )
-    .join(";");
+// Monta o parâmetro `exclude` do Mapbox. Aceita feições nomeadas (ex.
+// "toll" para evitar pedágios) e/ou polígonos a evitar. Mapbox separa os
+// valores por vírgula: `exclude=toll,polygon(...)`.
+function mapboxExcludeParam({ avoidPolygons = [], avoidTolls = false } = {}) {
+  const parts = [];
+  if (avoidTolls) parts.push("toll");
+  for (const poly of avoidPolygons) {
+    parts.push(`polygon(${poly.map(([lat, lng]) => `${lng} ${lat}`).join(",")})`);
+  }
+  return parts.length ? parts.join(",") : null;
 }
 
-async function mapboxRoute(stops, { avoidPolygons = [], timeout } = {}) {
+async function mapboxRoute(stops, { avoidPolygons = [], avoidTolls = false, timeout } = {}) {
   if (!MAPBOX_TOKEN) throw new Error("VITE_MAPBOX_TOKEN missing");
   const coords = stops.map((s) => `${s.longitude},${s.latitude}`).join(";");
   const params = new URLSearchParams({
@@ -108,7 +110,7 @@ async function mapboxRoute(stops, { avoidPolygons = [], timeout } = {}) {
     steps: "false",
     access_token: MAPBOX_TOKEN,
   });
-  const exclude = mapboxExcludeParam(avoidPolygons);
+  const exclude = mapboxExcludeParam({ avoidPolygons, avoidTolls });
   if (exclude) params.set("exclude", exclude);
   const url = `${MAPBOX_BASE}/directions/v5/mapbox/driving/${coords}?${params}`;
   const data = await fetchJson(url, { timeout });
@@ -122,7 +124,7 @@ async function mapboxRoute(stops, { avoidPolygons = [], timeout } = {}) {
   };
 }
 
-async function mapboxOptimize(stops, { fixEnd = false, timeout } = {}) {
+async function mapboxOptimize(stops, { fixEnd = false, avoidTolls = false, timeout } = {}) {
   if (!MAPBOX_TOKEN) throw new Error("VITE_MAPBOX_TOKEN missing");
   const coords = stops.map((s) => `${s.longitude},${s.latitude}`).join(";");
   const params = new URLSearchParams({
@@ -133,6 +135,7 @@ async function mapboxOptimize(stops, { fixEnd = false, timeout } = {}) {
     roundtrip: "false",
     access_token: MAPBOX_TOKEN,
   });
+  if (avoidTolls) params.set("exclude", "toll");
   const url = `${MAPBOX_BASE}/optimized-trips/v1/mapbox/driving/${coords}?${params}`;
   const data = await fetchJson(url, { timeout });
   if (data.code && data.code !== "Ok") throw new Error(`Mapbox optimize: ${data.code}`);
@@ -174,18 +177,22 @@ export async function getRouteGeometry(stops, options = {}) {
   if (valid.length < 2) {
     return { coordinates: valid.map((s) => [s.latitude, s.longitude]), distance_km: 0, duration_min: 0, legs: [] };
   }
-  const { avoidPolygons = [], timeout = DEFAULT_TIMEOUT_MS } = options;
-  const key = hashStops(valid, `geom:${PROVIDER}:avoid=${avoidPolygons.length}`);
+  const { avoidPolygons = [], avoidTolls = false, timeout = DEFAULT_TIMEOUT_MS } = options;
+  const key = hashStops(valid, `geom:${PROVIDER}:avoid=${avoidPolygons.length}:toll=${avoidTolls ? 1 : 0}`);
   if (cache.has(key)) return cache.get(key);
 
   try {
     let raw;
     if (PROVIDER === "mapbox") {
-      raw = await mapboxRoute(valid, { avoidPolygons, timeout });
+      raw = await mapboxRoute(valid, { avoidPolygons, avoidTolls, timeout });
     } else {
       if (avoidPolygons.length) {
         // eslint-disable-next-line no-console
         console.info("[routing] OSRM does not support avoidPolygons — ignored");
+      }
+      if (avoidTolls) {
+        // eslint-disable-next-line no-console
+        console.info("[routing] OSRM does not support avoiding tolls — ignored (use Mapbox provider)");
       }
       raw = await osrmRoute(valid, { timeout });
     }
@@ -210,18 +217,22 @@ export async function optimizeStopOrder(stops, options = {}) {
     const geom = await getRouteGeometry(valid, options);
     return { ...geom, stops: valid, optimized: false };
   }
-  const { fixEnd = false, avoidPolygons = [], timeout = DEFAULT_TIMEOUT_MS } = options;
-  const key = hashStops(valid, `opt:${PROVIDER}:fixEnd=${fixEnd}:avoid=${avoidPolygons.length}`);
+  const { fixEnd = false, avoidPolygons = [], avoidTolls = false, timeout = DEFAULT_TIMEOUT_MS } = options;
+  const key = hashStops(valid, `opt:${PROVIDER}:fixEnd=${fixEnd}:avoid=${avoidPolygons.length}:toll=${avoidTolls ? 1 : 0}`);
   if (cache.has(key)) return cache.get(key);
 
   try {
     let raw;
     if (PROVIDER === "mapbox") {
-      raw = await mapboxOptimize(valid, { fixEnd, timeout });
+      raw = await mapboxOptimize(valid, { fixEnd, avoidTolls, timeout });
     } else {
       if (avoidPolygons.length) {
         // eslint-disable-next-line no-console
         console.info("[routing] OSRM trip does not support avoidPolygons — ignored");
+      }
+      if (avoidTolls) {
+        // eslint-disable-next-line no-console
+        console.info("[routing] OSRM trip does not support avoiding tolls — ignored (use Mapbox provider)");
       }
       raw = await osrmTrip(valid, { fixEnd, timeout });
     }
@@ -360,6 +371,11 @@ export function haversineKm(lat1, lon1, lat2, lon2) {
 }
 
 export const ROUTING_PROVIDER = PROVIDER;
+
+// Evitar pedágio só é suportado pelo Mapbox (com token). O OSRM público
+// ignora o pedido. A UI usa isso para avisar o usuário quando a opção não
+// terá efeito real.
+export const SUPPORTS_AVOID_TOLLS = PROVIDER === "mapbox" && !!MAPBOX_TOKEN;
 
 // Returns the route's departure point or null. Supports both the new schema
 // (route.departure_lat/lng/address as top-level fields) and the legacy schema

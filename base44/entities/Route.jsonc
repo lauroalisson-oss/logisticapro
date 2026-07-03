@@ -139,6 +139,11 @@
     "notes": {
       "type": "string",
       "title": "Observa\u00e7\u00f5es"
+    },
+    "avoid_tolls": {
+      "type": "boolean",
+      "title": "Evitar Ped\u00e1gios",
+      "default": false
     }
   },
   "required": [
