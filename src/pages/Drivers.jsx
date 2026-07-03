@@ -7,7 +7,7 @@ import PageHeader from "../components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Users, Loader2, Search, UserCircle, Plus, Key, Copy, CheckCircle2, X, AlertCircle, Clock, Trash2 } from "lucide-react";
+import { Users, Loader2, Search, UserCircle, Plus, Key, Copy, X, AlertCircle, Clock, Trash2 } from "lucide-react";
 
 function generatePin() {
   if (typeof crypto !== "undefined" && crypto.getRandomValues) {

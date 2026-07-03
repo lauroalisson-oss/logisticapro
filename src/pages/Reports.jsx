@@ -125,7 +125,7 @@ export default function Reports() {
     setFuelForm({ vehicle_id: "", date: "", km: "", liters: "", value: "", fuel_type: "diesel", notes: "" });
     setShowFuelForm(false);
     setSavingFuel(false);
-    const f = await base44.entities.FuelRecord.list("-date");
+    const f = await base44.entities.FuelRecord.filter({ company_id: companyId }, "-date");
     setFuelRecords(f);
   };
 

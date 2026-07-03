@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Lock, Loader2, AlertCircle, CheckCircle2, Clock, LogOut } from "lucide-react";
-import { computeExpiresAt, daysRemaining } from "@/lib/platformAdmin";
+import { daysRemaining } from "@/lib/platformAdmin";
 
 export default function CompanyAccessLock() {
   const { company, patchCompany } = useCompany();
@@ -25,56 +25,19 @@ export default function CompanyAccessLock() {
     setChecking(true);
     setError("");
     try {
-      const candidates = await base44.entities.AccessPin.filter({ pin: code });
-
-      // Aceita PIN disponível OU PIN já resgatado pela própria empresa
-      // (o mesmo PIN vale enquanto o acesso estiver dentro do prazo).
-      const match = candidates.find(p =>
-        p.status === "available" ||
-        (p.status === "redeemed" && p.redeemed_by_company_id === company?.id)
-      );
-
-      if (!match) {
-        if (candidates.find(p => p.status === "redeemed")) setError("Este PIN foi utilizado por outra empresa.");
-        else if (candidates.find(p => p.status === "expired")) setError("Este PIN foi invalidado. Solicite um novo ao administrador.");
-        else setError("PIN não encontrado. Verifique e tente novamente.");
+      // Toda a validação e escrita acontecem no backend (redeemAccessPin),
+      // que roda com service role — o cliente não lê AccessPin nem escreve
+      // em Company diretamente.
+      const res = await base44.functions.invoke('redeemAccessPin', { pin: code });
+      if (!res.data?.ok || !res.data?.company) {
+        setError(res.data?.error || "Falha ao validar o PIN. Tente novamente.");
         return;
       }
-
-      // Se o PIN foi emitido para um email específico, ele precisa casar
-      // com o owner_email da empresa que está tentando resgatar.
-      if (match.assigned_company_email &&
-          match.assigned_company_email.toLowerCase() !== (company?.owner_email || "").toLowerCase()) {
-        setError("Este PIN foi emitido para outra conta.");
-        return;
-      }
-
-      const newExpiresAt = computeExpiresAt(company?.access_expires_at, match.duration_days);
-      const redeemedAt = new Date().toISOString();
-
-      await base44.entities.Company.update(company.id, {
-        status: "active",
-        access_expires_at: newExpiresAt,
-        last_pin_used: match.pin,
-      });
-      // Só atualiza o PIN se ainda estava disponível
-      if (match.status === "available") {
-        await base44.entities.AccessPin.update(match.id, {
-          status: "redeemed",
-          redeemed_by_company_id: company.id,
-          redeemed_at: redeemedAt,
-        });
-      }
-
-      patchCompany({
-        status: "active",
-        access_expires_at: newExpiresAt,
-        last_pin_used: match.pin,
-      });
+      patchCompany(res.data.company);
       // AppLayout re-renders naturally based on companyHasActiveAccess.
     } catch (err) {
       console.error(err);
-      setError(err?.message || "Falha ao validar o PIN. Tente novamente.");
+      setError(err?.response?.data?.error || err?.data?.error || "Falha ao validar o PIN. Tente novamente.");
     } finally {
       setChecking(false);
     }

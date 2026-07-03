@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, ChevronRight, AlertTriangle, CheckCircle2, SkipForward } from "lucide-react";
+import { ClipboardCheck, AlertTriangle, CheckCircle2, SkipForward } from "lucide-react";
 
 const STATUS_OPTIONS = {
   fluid: [

@@ -6,12 +6,21 @@ Deno.serve(async (req) => {
 
   const { data, old_data } = body;
 
-  if (!data || !data.stops) {
+  if (!data || !data.id || !data.stops) {
+    return Response.json({ skipped: true });
+  }
+
+  // Não confia nos campos enviados no corpo: recarrega a rota do banco e
+  // usa só os dados persistidos. Sem isso, qualquer chamador autenticado
+  // poderia forjar alertas arbitrários (a criação roda com service role).
+  const routes = await base44.asServiceRole.entities.Route.filter({ id: data.id });
+  const route = routes[0];
+  if (!route) {
     return Response.json({ skipped: true });
   }
 
   const oldStops = old_data?.stops || [];
-  const newStops = data.stops || [];
+  const newStops = route.stops || [];
 
   const createdAlerts = [];
 
@@ -24,7 +33,7 @@ Deno.serve(async (req) => {
 
     // Check if alert already exists for this stop
     const existing = await base44.asServiceRole.entities.Alert.filter({
-      route_id: data.id,
+      route_id: route.id,
       order_id: stop.order_id,
     });
     if (existing.length > 0) continue;
@@ -32,14 +41,15 @@ Deno.serve(async (req) => {
     const alert = await base44.asServiceRole.entities.Alert.create({
       type: stop.status === "not_delivered" ? "not_delivered" : "issue",
       status: "pending",
-      route_id: data.id,
-      route_number: data.route_number,
+      company_id: route.company_id,
+      route_id: route.id,
+      route_number: route.route_number,
       order_id: stop.order_id,
       order_number: stop.order_number,
       client_name: stop.client_name,
       address: stop.address,
-      driver_name: data.driver_name,
-      driver_email: data.driver_email,
+      driver_name: route.driver_name,
+      driver_email: route.driver_email,
       notes: stop.delivery_notes || "",
     });
     createdAlerts.push(alert);
