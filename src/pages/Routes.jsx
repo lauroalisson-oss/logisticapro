@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Route, Loader2, Eye, Trash2, Map, Zap, AlertCircle, RefreshCcw, Sparkles } from "lucide-react";
 import RouteMapView from "../components/routes/RouteMapView";
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   getRouteGeometry,
@@ -19,6 +19,7 @@ import {
   serializeGeometry,
   formatDuration,
   getRouteDeparture,
+  resolveRouteDeparture,
   getDeliveryStops,
 } from "@/lib/routing";
 import L from "leaflet";
@@ -34,6 +35,18 @@ const departureIcon = L.divIcon({
   iconSize: [34, 34],
   iconAnchor: [17, 17],
 });
+
+function FitBounds({ positions }) {
+  const map = useMap();
+  useEffect(() => {
+    if (positions && positions.length > 1) {
+      map.fitBounds(L.latLngBounds(positions), { padding: [40, 40] });
+    } else if (positions && positions.length === 1) {
+      map.setView(positions[0], 13);
+    }
+  }, [JSON.stringify(positions)]);
+  return null;
+}
 
 export default function Routes() {
   const { companyId, company } = useCompany();
@@ -85,6 +98,15 @@ export default function Routes() {
     const load = loads.find(l => l.id === selectedLoad);
     const driver = users.find(u => u.id === selectedDriver);
     if (!load || !driver) return;
+
+    // O ponto de partida é obrigatório: toda rota tem que sair da base para
+    // o cálculo do trajeto fazer sentido. Sem ele, mande o usuário à tela
+    // de configurações antes de criar.
+    if (!(company?.departure_lat && company?.departure_lng)) {
+      setCreateError("Configure o Ponto de Partida das Rotas em Configurações antes de criar uma rota.");
+      return;
+    }
+
     setCreating(true);
     setCreateError("");
 
@@ -229,7 +251,7 @@ export default function Routes() {
       return;
     }
     setMapGeometry(null);
-    const departure = getRouteDeparture(r);
+    const departure = resolveRouteDeparture(r, company);
     const deliveries = getDeliveryStops(r)
       .filter(s => s.latitude && s.longitude)
       .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
@@ -243,7 +265,7 @@ export default function Routes() {
   const recalcGeometry = async (r) => {
     setActionRouteId(r.id);
     try {
-      const departure = getRouteDeparture(r);
+      const departure = resolveRouteDeparture(r, company);
       const deliveries = getDeliveryStops(r)
         .filter(s => s.latitude && s.longitude)
         .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
@@ -260,6 +282,13 @@ export default function Routes() {
         total_distance_km: result.distance_km,
         estimated_duration_min: result.duration_min,
         estimated_time_min: result.duration_min,
+        // Grava o ponto de partida na rota se ele veio da empresa (rota
+        // antiga sem departure) — assim fica permanente.
+        ...(departure && !getRouteDeparture(r) ? {
+          departure_lat: departure.latitude,
+          departure_lng: departure.longitude,
+          departure_address: departure.address,
+        } : {}),
       });
       toast.success(
         result.fallback
@@ -279,7 +308,7 @@ export default function Routes() {
   const optimizeOrder = async (r) => {
     setActionRouteId(r.id);
     try {
-      const departure = getRouteDeparture(r);
+      const departure = resolveRouteDeparture(r, company);
       const deliveries = getDeliveryStops(r)
         .filter(s => s.latitude && s.longitude)
         .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
@@ -304,6 +333,12 @@ export default function Routes() {
         estimated_duration_min: result.duration_min,
         estimated_time_min: result.duration_min,
         optimized: !!result.optimized,
+        // Grava o ponto de partida na rota se ele veio da empresa.
+        ...(departure && !getRouteDeparture(r) ? {
+          departure_lat: departure.latitude,
+          departure_lng: departure.longitude,
+          departure_address: departure.address,
+        } : {}),
       });
       toast.success(
         result.optimized
@@ -539,7 +574,7 @@ export default function Routes() {
             )}
           </DialogHeader>
           {mapRoute && (() => {
-            const departure = getRouteDeparture(mapRoute);
+            const departure = resolveRouteDeparture(mapRoute, company);
             const sortedStops = getDeliveryStops(mapRoute)
               .filter(s => s.latitude && s.longitude)
               .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
@@ -552,6 +587,10 @@ export default function Routes() {
               ...(departure ? [[departure.latitude, departure.longitude]] : []),
               ...sortedStops.map(s => [s.latitude, s.longitude]),
             ];
+            // Enquadra partida + entregas (e o traçado) para nada ficar fora da tela.
+            const boundsPositions = (mapGeometry && mapGeometry.length > 1)
+              ? [...fallbackPositions, ...mapGeometry]
+              : fallbackPositions;
             return (
               <div className="h-96 rounded-lg overflow-hidden">
                 <MapContainer
@@ -559,6 +598,7 @@ export default function Routes() {
                   zoom={10}
                   style={{ height: "100%", width: "100%" }}
                 >
+                  <FitBounds positions={boundsPositions} />
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                   {departure && (
                     <Marker position={[departure.latitude, departure.longitude]} icon={departureIcon}>
