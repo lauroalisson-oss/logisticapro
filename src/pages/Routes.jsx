@@ -21,6 +21,7 @@ import {
   getRouteDeparture,
   resolveRouteDeparture,
   getDeliveryStops,
+  getRoutingProvider,
 } from "@/lib/routing";
 import { useRoutingConfig } from "@/lib/RoutingConfigContext";
 import L from "leaflet";
@@ -97,6 +98,24 @@ export default function Routes() {
   const readyLoads = loads.filter(l => ["assembling", "ready"].includes(l.status));
   const drivers = users.filter(u => u.role === "driver" || u.is_driver || u.driver_pin || u._fromInvite);
 
+  // Reserva 1 chamada da cota mensal da empresa antes de uma operação que
+  // custa uma requisição ao Mapbox. OSRM é gratuito, então não conta.
+  // Fail-open: se a checagem em si falhar, libera (o limite é controle de
+  // custo, não uma barreira de segurança).
+  const ensureRoutingQuota = async () => {
+    if (getRoutingProvider() !== "mapbox") return { allowed: true };
+    try {
+      const res = await base44.functions.invoke("checkRoutingQuota", {});
+      return res.data || { allowed: true };
+    } catch (err) {
+      console.warn("[routing] quota check failed, allowing:", err?.message || err);
+      return { allowed: true };
+    }
+  };
+
+  const quotaMessage = (q) =>
+    `Limite mensal de rotas da empresa atingido (${q.used}/${q.limit}). Peça ao administrador da plataforma para aumentar a cota.`;
+
   const handleCreate = async () => {
     const load = loads.find(l => l.id === selectedLoad);
     const driver = users.find(u => u.id === selectedDriver);
@@ -159,6 +178,12 @@ export default function Routes() {
     if (rawStops.length >= 1) {
       const allPoints = departure ? [departure, ...rawStops] : rawStops;
       if (allPoints.length >= 2) {
+        const quota = await ensureRoutingQuota();
+        if (!quota.allowed) {
+          setCreateError(quotaMessage(quota));
+          setCreating(false);
+          return;
+        }
         const canOptimize = optimizeRoute && rawStops.length >= 2;
         const result = canOptimize
           ? await optimizeStopOrder(allPoints, { fixEnd: false, avoidTolls })
@@ -281,6 +306,11 @@ export default function Routes() {
         toast.error("Rota precisa de pelo menos 2 pontos com geolocalização");
         return;
       }
+      const quota = await ensureRoutingQuota();
+      if (!quota.allowed) {
+        toast.error(quotaMessage(quota));
+        return;
+      }
       const result = await getRouteGeometry(allPoints, { avoidTolls: !!r.avoid_tolls });
       await base44.entities.Route.update(r.id, {
         route_geometry: serializeGeometry(result.coordinates),
@@ -324,6 +354,11 @@ export default function Routes() {
       const allPoints = departure
         ? [{ ...departure, _isDeparture: true }, ...deliveries]
         : deliveries;
+      const quota = await ensureRoutingQuota();
+      if (!quota.allowed) {
+        toast.error(quotaMessage(quota));
+        return;
+      }
       const result = await optimizeStopOrder(allPoints, { fixEnd: false, avoidTolls: !!r.avoid_tolls });
       const reordered = result.stops.filter((s) => !s._isDeparture);
       const newStops = reordered.map((s, i) => {

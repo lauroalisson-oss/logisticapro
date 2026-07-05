@@ -1,0 +1,23 @@
+{
+  "name": "RoutingUsage",
+  "type": "object",
+  "properties": {
+    "company_id": {
+      "type": "string",
+      "title": "Empresa"
+    },
+    "period": {
+      "type": "string",
+      "title": "Período (AAAA-MM)"
+    },
+    "count": {
+      "type": "number",
+      "title": "Chamadas no período",
+      "default": 0
+    }
+  },
+  "required": [
+    "company_id",
+    "period"
+  ]
+}
