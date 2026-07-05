@@ -5,7 +5,7 @@ import PageHeader from "../components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Building2, Loader2, Search, Key, Copy, CheckCircle2, Clock, AlertTriangle, Plus, Gauge } from "lucide-react";
+import { Building2, Loader2, Search, Key, Copy, CheckCircle2, Clock, AlertTriangle, Plus, Gauge, BarChart3, Package, Route as RouteIcon, Truck, Users, Boxes, Bell } from "lucide-react";
 import { PIN_DURATIONS, generateAccessPin, daysRemaining } from "@/lib/platformAdmin";
 
 const DEFAULT_ROUTING_LIMIT = 800;
@@ -43,6 +43,9 @@ export default function AdminCompanies() {
   const [limitFor, setLimitFor] = useState(null); // empresa em edição de limite
   const [limitValue, setLimitValue] = useState("");
   const [savingLimit, setSavingLimit] = useState(false);
+  const [detailFor, setDetailFor] = useState(null); // empresa em detalhamento
+  const [detailStats, setDetailStats] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -71,13 +74,30 @@ export default function AdminCompanies() {
     setError("");
     try {
       const n = Math.max(0, Math.round(Number(limitValue) || 0));
-      await base44.entities.Company.update(limitFor.id, { routing_monthly_limit: n });
+      // Alteração de cota passa pela função de backend, que verifica o
+      // super-admin no servidor — não é uma escrita direta do cliente.
+      const res = await base44.functions.invoke("setRoutingLimit", { company_id: limitFor.id, limit: n });
+      if (!res.data?.ok) throw new Error(res.data?.error || "Falha ao salvar o limite.");
       setLimitFor(null);
       await loadData();
     } catch (err) {
-      setError(err?.message || "Falha ao salvar o limite.");
+      setError(err?.response?.data?.error || err?.message || "Falha ao salvar o limite.");
     } finally {
       setSavingLimit(false);
+    }
+  };
+
+  const openDetail = async (company) => {
+    setDetailFor(company);
+    setDetailStats(null);
+    setDetailLoading(true);
+    try {
+      const res = await base44.functions.invoke("getCompanyStats", { company_id: company.id });
+      setDetailStats(res.data || null);
+    } catch {
+      setDetailStats({ error: true });
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -264,17 +284,27 @@ export default function AdminCompanies() {
                 <p className="text-[11px] text-muted-foreground">Último PIN: <span className="font-mono">{c.last_pin_used}</span></p>
               )}
 
-              <Button
-                variant={status === "active" && remaining > 5 ? "outline" : "default"}
-                size="sm"
-                className="w-full"
-                onClick={() => { setRenewFor(c); setRenewDuration(30); setError(""); }}
-              >
-                <Key className="w-3.5 h-3.5 mr-1.5" />
-                {status === "pending_pin" ? "Gerar PIN de ativação" :
-                 status === "expired" ? "Gerar PIN de reativação" :
-                 "Gerar PIN de renovação"}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => openDetail(c)}
+                >
+                  <BarChart3 className="w-3.5 h-3.5 mr-1.5" /> Detalhes
+                </Button>
+                <Button
+                  variant={status === "active" && remaining > 5 ? "outline" : "default"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => { setRenewFor(c); setRenewDuration(30); setError(""); }}
+                >
+                  <Key className="w-3.5 h-3.5 mr-1.5" />
+                  {status === "pending_pin" ? "PIN de ativação" :
+                   status === "expired" ? "PIN de reativação" :
+                   "PIN de renovação"}
+                </Button>
+              </div>
             </div>
           );
         })}
@@ -366,6 +396,90 @@ export default function AdminCompanies() {
                 {savingLimit ? "Salvando..." : "Salvar"}
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Company detail modal */}
+      {detailFor && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDetailFor(null)}>
+          <div className="bg-card rounded-2xl border border-border w-full max-w-lg p-6 space-y-5 shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold flex items-center gap-2"><BarChart3 className="w-5 h-5 text-primary" /> {detailFor.name}</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">{detailFor.owner_email}</p>
+              </div>
+              <button onClick={() => setDetailFor(null)} className="text-muted-foreground hover:text-foreground text-sm">Fechar</button>
+            </div>
+
+            {detailLoading && (
+              <div className="flex items-center justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+            )}
+
+            {!detailLoading && detailStats?.error && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>Não foi possível carregar os detalhes. Verifique se a função getCompanyStats está publicada.</span>
+              </div>
+            )}
+
+            {!detailLoading && detailStats && !detailStats.error && (() => {
+              const c = detailStats.counts || {};
+              const tiles = [
+                { icon: Package, label: "Pedidos", value: c.orders, sub: `${c.orders_pending || 0} pend. · ${c.orders_delivered || 0} entreg.` },
+                { icon: RouteIcon, label: "Rotas", value: c.routes, sub: `${c.routes_active || 0} ativas · ${c.routes_completed || 0} concl.` },
+                { icon: Truck, label: "Veículos", value: c.vehicles },
+                { icon: Boxes, label: "Cargas", value: c.loads },
+                { icon: Users, label: "Motoristas", value: c.drivers, sub: `${c.users || 0} usuário(s)` },
+                { icon: Bell, label: "Alertas pendentes", value: c.alerts_pending },
+              ];
+              const limit = effectiveLimit(detailFor);
+              const usedNow = Number(usage[detailFor.id]) || 0;
+              return (
+                <div className="space-y-5">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    {tiles.map((t, i) => (
+                      <div key={i} className="bg-muted/40 rounded-xl p-3">
+                        <t.icon className="w-4 h-4 text-primary mb-1.5" />
+                        <p className="text-2xl font-bold leading-none">{t.value ?? 0}</p>
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground mt-1">{t.label}</p>
+                        {t.sub && <p className="text-[11px] text-muted-foreground mt-0.5">{t.sub}</p>}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-1.5"><Gauge className="w-3.5 h-3.5" /> Uso de rotas (Mapbox)</p>
+                      <button
+                        onClick={() => { setDetailFor(null); setLimitFor(detailFor); setLimitValue(String(limit)); setError(""); }}
+                        className="text-[11px] text-primary hover:underline font-medium"
+                      >
+                        Ajustar limite ({limit}/mês)
+                      </button>
+                    </div>
+                    <p className="text-sm mb-2">Este mês: <strong>{usedNow}</strong> / {limit}</p>
+                    <div className="space-y-1.5">
+                      {(detailStats.usageHistory || []).length === 0 && (
+                        <p className="text-xs text-muted-foreground">Sem uso registrado ainda.</p>
+                      )}
+                      {(detailStats.usageHistory || []).map((h) => {
+                        const pct = limit > 0 ? Math.min(100, Math.round((h.count / limit) * 100)) : 0;
+                        return (
+                          <div key={h.period} className="flex items-center gap-2 text-xs">
+                            <span className="w-16 font-mono text-muted-foreground">{h.period}</span>
+                            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                              <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="w-12 text-right font-semibold tabular-nums">{h.count}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
