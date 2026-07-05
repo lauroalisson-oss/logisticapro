@@ -21,8 +21,8 @@ import {
   getRouteDeparture,
   resolveRouteDeparture,
   getDeliveryStops,
-  SUPPORTS_AVOID_TOLLS,
 } from "@/lib/routing";
+import { useRoutingConfig } from "@/lib/RoutingConfigContext";
 import L from "leaflet";
 import { toast } from "sonner";
 
@@ -51,6 +51,7 @@ function FitBounds({ positions }) {
 
 export default function Routes() {
   const { companyId, company } = useCompany();
+  const { avoidTollsSupported } = useRoutingConfig();
   const [routes, setRoutes] = useState([]);
   const [loads, setLoads] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -556,7 +557,7 @@ export default function Routes() {
                   <span className="block text-xs text-muted-foreground">Calcula o trajeto priorizando estradas sem pedágio</span>
                 </label>
               </div>
-              {avoidTolls && !SUPPORTS_AVOID_TOLLS && (
+              {avoidTolls && !avoidTollsSupported && (
                 <div className="flex items-start gap-1.5 text-xs text-amber-800">
                   <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                   <span>O motor de rotas atual (OSRM) não evita pedágios. Configure o provedor Mapbox para ativar este recurso; por enquanto a rota será calculada normalmente.</span>

@@ -10,6 +10,7 @@ import { base44 } from '@/api/base44Client';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
 import { CompanyProvider, useCompany } from './lib/CompanyContext';
+import { RoutingConfigProvider } from './lib/RoutingConfigContext';
 import { isPlatformAdmin, companyHasActiveAccess } from './lib/platformAdmin';
 import AppLayout from './components/layout/AppLayout';
 import DriverLayout from './components/layout/DriverLayout';
@@ -158,7 +159,9 @@ function App() {
       <QueryClientProvider client={queryClientInstance}>
         <Router>
           <CompanyProvider>
-            <AuthenticatedApp />
+            <RoutingConfigProvider>
+              <AuthenticatedApp />
+            </RoutingConfigProvider>
           </CompanyProvider>
         </Router>
         <Toaster />

@@ -11,8 +11,21 @@
 //   `exclude=polygon(...)`; OSRM (public) has no equivalent and ignores them
 //   with a console warning.
 
-const PROVIDER = (import.meta.env.VITE_ROUTING_PROVIDER || "osrm").toLowerCase();
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || "";
+// Provider e token começam com o valor de build (útil em dev local via
+// .env.local) mas podem ser sobrescritos em runtime por configureRouting().
+// No Base44 hospedado o token vem de um Segredo, que só é acessível às
+// funções de backend — então o app busca essa config no backend ao iniciar
+// e chama configureRouting() com o resultado. Por isso são `let`, não `const`.
+let PROVIDER = (import.meta.env.VITE_ROUTING_PROVIDER || "osrm").toLowerCase();
+let MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || "";
+
+// Define provider/token em tempo de execução. Chamado uma vez no startup do
+// app com os valores vindos da função de backend getMapboxConfig.
+export function configureRouting({ provider, token } = {}) {
+  if (provider) PROVIDER = String(provider).toLowerCase();
+  if (token != null) MAPBOX_TOKEN = token;
+}
+
 const OSRM_BASE = "https://router.project-osrm.org";
 const MAPBOX_BASE = "https://api.mapbox.com";
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -370,12 +383,17 @@ export function haversineKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export const ROUTING_PROVIDER = PROVIDER;
+export function getRoutingProvider() {
+  return PROVIDER;
+}
 
 // Evitar pedágio só é suportado pelo Mapbox (com token). O OSRM público
 // ignora o pedido. A UI usa isso para avisar o usuário quando a opção não
-// terá efeito real.
-export const SUPPORTS_AVOID_TOLLS = PROVIDER === "mapbox" && !!MAPBOX_TOKEN;
+// terá efeito real. É função (não const) porque provider/token podem ser
+// definidos em runtime via configureRouting().
+export function supportsAvoidTolls() {
+  return PROVIDER === "mapbox" && !!MAPBOX_TOKEN;
+}
 
 // Returns the route's departure point or null. Supports both the new schema
 // (route.departure_lat/lng/address as top-level fields) and the legacy schema
