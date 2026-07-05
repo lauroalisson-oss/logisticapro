@@ -62,6 +62,10 @@
     "departure_lng": {
       "type": "number",
       "title": "Longitude Ponto de Partida"
+    },
+    "routing_monthly_limit": {
+      "type": "number",
+      "title": "Limite mensal de rotas (Mapbox)"
     }
   },
   "required": [

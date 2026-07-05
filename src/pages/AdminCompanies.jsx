@@ -5,8 +5,10 @@ import PageHeader from "../components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Building2, Loader2, Search, Key, Copy, CheckCircle2, Clock, AlertTriangle, Plus } from "lucide-react";
+import { Building2, Loader2, Search, Key, Copy, CheckCircle2, Clock, AlertTriangle, Plus, Gauge } from "lucide-react";
 import { PIN_DURATIONS, generateAccessPin, daysRemaining } from "@/lib/platformAdmin";
+
+const DEFAULT_ROUTING_LIMIT = 800;
 
 const STATUS_META = {
   pending_pin: { label: "Aguardando PIN", color: "bg-amber-100 text-amber-800 border-amber-200" },
@@ -36,6 +38,11 @@ export default function AdminCompanies() {
   const [lastPin, setLastPin] = useState(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
+  const [usage, setUsage] = useState({}); // company_id -> chamadas no mês
+  const [usagePeriod, setUsagePeriod] = useState("");
+  const [limitFor, setLimitFor] = useState(null); // empresa em edição de limite
+  const [limitValue, setLimitValue] = useState("");
+  const [savingLimit, setSavingLimit] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -46,7 +53,32 @@ export default function AdminCompanies() {
     ]);
     setCompanies(c);
     setPins(p);
+    // Uso do motor de rotas no mês corrente (best-effort).
+    try {
+      const res = await base44.functions.invoke("getRoutingUsage", {});
+      setUsage(res.data?.usageByCompany || {});
+      setUsagePeriod(res.data?.period || "");
+    } catch { /* sem uso ainda / função não publicada */ }
     setLoading(false);
+  };
+
+  const effectiveLimit = (c) =>
+    Number(c.routing_monthly_limit) > 0 ? Number(c.routing_monthly_limit) : DEFAULT_ROUTING_LIMIT;
+
+  const saveLimit = async () => {
+    if (!limitFor) return;
+    setSavingLimit(true);
+    setError("");
+    try {
+      const n = Math.max(0, Math.round(Number(limitValue) || 0));
+      await base44.entities.Company.update(limitFor.id, { routing_monthly_limit: n });
+      setLimitFor(null);
+      await loadData();
+    } catch (err) {
+      setError(err?.message || "Falha ao salvar o limite.");
+    } finally {
+      setSavingLimit(false);
+    }
   };
 
   const countPinsFor = (email) => {
@@ -180,6 +212,40 @@ export default function AdminCompanies() {
                 </div>
               </div>
 
+              {(() => {
+                const limit = effectiveLimit(c);
+                const used = Number(usage[c.id]) || 0;
+                const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+                const near = pct >= 80;
+                return (
+                  <div className="bg-muted/40 rounded-lg p-2.5 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                        <Gauge className="w-3 h-3" /> Rotas Mapbox {usagePeriod && `(${usagePeriod})`}
+                      </p>
+                      <button
+                        onClick={() => { setLimitFor(c); setLimitValue(String(limit)); setError(""); }}
+                        className="text-[11px] text-primary hover:underline font-medium"
+                      >
+                        Ajustar limite
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className={`font-semibold ${near ? "text-amber-700" : "text-foreground"}`}>
+                        {used} / {limit}
+                      </span>
+                      <span className="text-muted-foreground">{pct}%</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${near ? "bg-amber-500" : "bg-primary"}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+
               {status === "active" && (
                 <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${remaining <= 5 ? "bg-amber-50 border border-amber-200 text-amber-800" : "bg-muted/40 text-muted-foreground"}`}>
                   {remaining <= 5 ? <AlertTriangle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
@@ -257,6 +323,47 @@ export default function AdminCompanies() {
               <Button className="flex-1" onClick={() => generateRenewal(renewFor)} disabled={renewing}>
                 {renewing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Key className="w-4 h-4 mr-2" />}
                 {renewing ? "Gerando..." : "Gerar"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Routing limit modal */}
+      {limitFor && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl border border-border w-full max-w-sm p-6 space-y-5 shadow-xl">
+            <div>
+              <h2 className="text-lg font-bold flex items-center gap-2"><Gauge className="w-5 h-5 text-primary" /> Limite mensal de rotas</h2>
+              <p className="text-sm text-muted-foreground mt-1">para <strong>{limitFor.name}</strong> ({limitFor.owner_email})</p>
+            </div>
+            <div>
+              <Label>Rotas por mês (Mapbox) *</Label>
+              <Input
+                type="number"
+                min={0}
+                value={limitValue}
+                onChange={e => setLimitValue(e.target.value)}
+                className="mt-1"
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                Cada criação de rota, recálculo ou otimização conta como 1. Padrão da plataforma: {DEFAULT_ROUTING_LIMIT}/mês. Uso atual no período: <strong>{Number(usage[limitFor.id]) || 0}</strong>.
+              </p>
+            </div>
+
+            {error && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setLimitFor(null)} disabled={savingLimit}>Cancelar</Button>
+              <Button className="flex-1" onClick={saveLimit} disabled={savingLimit}>
+                {savingLimit ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                {savingLimit ? "Salvando..." : "Salvar"}
               </Button>
             </div>
           </div>
