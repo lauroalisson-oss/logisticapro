@@ -85,7 +85,9 @@ export default function Settings() {
   const handleSaveProfile = async () => {
     setSavingProfile(true);
     setProfileSaved(false);
-    await base44.auth.updateMe({ phone });
+    // Perfil salvo via backend (updateUserProfile), que só aceita campos de
+    // perfil — evita auto-edição de role/is_driver/company_id.
+    await base44.functions.invoke("updateUserProfile", { phone });
     setSavingProfile(false);
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 2500);
@@ -164,12 +166,15 @@ export default function Settings() {
         departure_lat: departureLat,
         departure_lng: departureLng,
       };
-      await base44.entities.Company.update(company.id, patch);
+      // Salvo via backend (saveCompanyProfile), que só aceita campos de
+      // perfil — nunca status/access_expires_at/routing_monthly_limit.
+      const res = await base44.functions.invoke("saveCompanyProfile", patch);
+      if (!res.data?.ok) throw new Error(res.data?.error || "Erro ao salvar dados da empresa.");
       patchCompany(patch);
       setCompanySaved(true);
       setTimeout(() => setCompanySaved(false), 2500);
     } catch (err) {
-      setCompanyError(err?.message || "Erro ao salvar dados da empresa.");
+      setCompanyError(err?.response?.data?.error || err?.message || "Erro ao salvar dados da empresa.");
     } finally {
       setSavingCompany(false);
     }

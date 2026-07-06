@@ -32,17 +32,13 @@ export const CompanyProvider = ({ children }) => {
   };
 
   const createCompany = async (data) => {
-    const user = await base44.auth.me();
-    // Nova empresa começa travada aguardando o PIN que o super-admin vai
-    // fornecer — ela só vira "active" quando a empresa resgatar um PIN
-    // válido na tela CompanyAccessLock.
-    const newCompany = await base44.entities.Company.create({
-      ...data,
-      owner_email: user.email,
-      status: "pending_pin",
-    });
-    // Save company_id on the current user
-    await base44.auth.updateMe({ company_id: newCompany.id });
+    // Criação feita no backend: o servidor força status "pending_pin",
+    // define owner_email e vincula o usuário — o cliente não escreve na
+    // entidade Company diretamente (senão daria para nascer já "active" e
+    // burlar a licença).
+    const res = await base44.functions.invoke("createCompany", data);
+    const newCompany = res.data?.company;
+    if (!newCompany) throw new Error(res.data?.error || "Erro ao criar empresa.");
     setCompany(newCompany);
     setCompanyId(newCompany.id);
     return newCompany;
