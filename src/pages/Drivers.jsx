@@ -104,7 +104,9 @@ export default function Drivers() {
 
   const copyAccessLink = (driver) => {
     if (!driver.driver_pin) return;
-    const link = `${window.location.origin}/?driver_pin=${driver.driver_pin}`;
+    // Link aponta direto para a rota do app de campo (/driver), não para o app de gestão.
+    // O ?driver_pin=XXXX é auto-aplicado pela tela de PIN do motorista.
+    const link = `${window.location.origin}/driver?driver_pin=${driver.driver_pin}`;
     navigator.clipboard.writeText(link).catch(() => {});
     setCopiedLink(driver.id);
     setTimeout(() => setCopiedLink(null), 2000);
@@ -316,7 +318,7 @@ export default function Drivers() {
                     >
                       {copiedLink === d.id
                         ? <span className="text-green-600 font-medium">Link copiado!</span>
-                        : <><LinkIcon className="w-3 h-3" /> Link de acesso</>}
+                        : <><LinkIcon className="w-3 h-3" /> Link do app</>}
                     </button>
                   )}
                   <button onClick={() => regeneratePin(d)} className="text-xs text-primary hover:underline flex items-center gap-1">
