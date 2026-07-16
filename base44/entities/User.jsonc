@@ -43,5 +43,14 @@
       "type": "number",
       "title": "Pontos na CNH"
     }
-  }
+  },
+  "required": [
+    "company_id",
+    "driver_pin",
+    "phone",
+    "cpf",
+    "license_number",
+    "license_category",
+    "license_points"
+  ]
 }
