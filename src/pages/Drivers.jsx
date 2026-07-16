@@ -119,9 +119,12 @@ export default function Drivers() {
 
   const regeneratePin = async (driver) => {
     try {
-      const pin = generatePin();
-      await base44.entities.User.update(driver.id, { driver_pin: pin });
-      setNewPin(pin);
+      // Atualização direta do User por usuário comum é bloqueada pela plataforma;
+      // o backend usa service role + validação de mesma-empresa.
+      const res = await base44.functions.invoke('regenerateDriverPin', { driver_id: driver.id });
+      if (!res.data?.ok) throw new Error(res.data?.error || 'Falha ao regenerar PIN.');
+      setNewPin(res.data.driver_pin);
+      setInviteError("");
       await loadData();
     } catch (err) {
       setInviteError(err?.message || "Falha ao regenerar PIN.");
