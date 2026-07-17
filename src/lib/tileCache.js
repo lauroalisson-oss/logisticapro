@@ -16,39 +16,26 @@ export function lat2tile(lat, zoom) {
   );
 }
 
-export function tilesForBounds({ north, south, east, west }, zoom) {
-  // x grows with longitude, y grows southwards
-  const xMin = lon2tile(west, zoom);
-  const xMax = lon2tile(east, zoom);
-  const yMin = lat2tile(north, zoom);
-  const yMax = lat2tile(south, zoom);
-  const urls = [];
-  for (let x = Math.min(xMin, xMax); x <= Math.max(xMin, xMax); x++) {
-    for (let y = Math.min(yMin, yMax); y <= Math.max(yMin, yMax); y++) {
-      urls.push(`https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`);
-    }
-  }
-  return urls;
-}
-
-// Build a list of tile URLs covering all listed lat/lng points (with a small
-// padding) across a range of zoom levels. Caps the total to avoid hitting
-// OSM tile limits / huge prefetches.
-export function tileUrlsForPoints(points, { zoomMin = 11, zoomMax = 14, paddingDeg = 0.05, maxTiles = 4000 } = {}) {
+// Tiles ao longo do trajeto real (geometria da rota + paradas), não do
+// retângulo que envolve todos os pontos — a versão anterior baixava a área
+// inteira entre a parada mais ao norte/sul/leste/oeste, o que em rotas que
+// não são uma linha reta significa baixar muito chão que o motorista nunca
+// vai passar perto. Aqui cada ponto do trajeto marca só os tiles vizinhos a
+// ele (tileRadius), formando um corredor em volta do caminho real.
+export function tileUrlsForRoute(points, { zoomMin = 12, zoomMax = 14, tileRadius = 1, maxTiles = 1500 } = {}) {
   if (!points || points.length === 0) return [];
-  const lats = points.map((p) => p[0]);
-  const lngs = points.map((p) => p[1]);
-  const bounds = {
-    north: Math.max(...lats) + paddingDeg,
-    south: Math.min(...lats) - paddingDeg,
-    east: Math.max(...lngs) + paddingDeg,
-    west: Math.min(...lngs) - paddingDeg,
-  };
   const urls = new Set();
   for (let z = zoomMin; z <= zoomMax; z++) {
-    for (const u of tilesForBounds(bounds, z)) {
-      urls.add(u);
-      if (urls.size >= maxTiles) return Array.from(urls);
+    for (const [lat, lng] of points) {
+      if (lat == null || lng == null) continue;
+      const cx = lon2tile(lng, z);
+      const cy = lat2tile(lat, z);
+      for (let dx = -tileRadius; dx <= tileRadius; dx++) {
+        for (let dy = -tileRadius; dy <= tileRadius; dy++) {
+          urls.add(`https://tile.openstreetmap.org/${z}/${cx + dx}/${cy + dy}.png`);
+          if (urls.size >= maxTiles) return Array.from(urls);
+        }
+      }
     }
   }
   return Array.from(urls);
@@ -57,14 +44,23 @@ export function tileUrlsForPoints(points, { zoomMin = 11, zoomMax = 14, paddingD
 export function prefetchTiles(urls, onProgress) {
   return new Promise((resolve, reject) => {
     if (!("serviceWorker" in navigator) || !navigator.serviceWorker.controller) {
-      reject(new Error("Service Worker indisponível — abra o app pelo navegador (https) e recarregue."));
+      reject(new Error("Service Worker ainda não está pronto — aguarde alguns segundos e tente de novo (ou recarregue a página)."));
       return;
     }
     const channel = new MessageChannel();
+    // Cada tile já tem timeout individual no service worker, mas isso é uma
+    // rede de segurança pro caso raro do PREFETCH_DONE nunca chegar (SW
+    // reiniciado no meio do processo, canal perdido, etc.) — sem isso a UI
+    // ficava presa em "carregando" pra sempre, sem chance de tentar de novo.
+    const safetyTimer = setTimeout(() => {
+      channel.port1.close();
+      reject(new Error("O download demorou demais e foi cancelado. Tente novamente com conexão mais estável."));
+    }, 5 * 60 * 1000);
     channel.port1.onmessage = (event) => {
       const data = event.data || {};
       if (data.type === "PREFETCH_PROGRESS") onProgress?.(data);
       if (data.type === "PREFETCH_DONE") {
+        clearTimeout(safetyTimer);
         onProgress?.(data);
         channel.port1.close();
         resolve(data);

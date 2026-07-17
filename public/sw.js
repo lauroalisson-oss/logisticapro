@@ -55,6 +55,20 @@ async function handleTile(request) {
   return new Response("", { status: 504, statusText: "Offline and not cached" });
 }
 
+// Sem isso, um único tile que o servidor da OSM demora (ou nunca) responder
+// travava o worker inteiro pra sempre — com vários workers concorrentes
+// puxando de uma fila de até milhares de tiles, bastava alguns pedidos
+// travados pra o download inteiro ficar preso em "carregando" indefinidamente.
+async function fetchWithTimeout(url, opts, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...opts, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 self.addEventListener("message", async (event) => {
   const data = event.data || {};
   if (data.type === "PREFETCH_TILES" && Array.isArray(data.urls)) {
@@ -64,7 +78,7 @@ self.addEventListener("message", async (event) => {
     let done = 0;
     let cachedAlready = 0;
     let failed = 0;
-    const concurrency = 6;
+    const concurrency = 4;
     let cursor = 0;
 
     async function worker() {
@@ -76,7 +90,7 @@ self.addEventListener("message", async (event) => {
           if (existing) {
             cachedAlready++;
           } else {
-            const res = await fetch(url, { mode: "no-cors" });
+            const res = await fetchWithTimeout(url, { mode: "no-cors" }, 8000);
             if (res && (res.ok || res.type === "opaque")) {
               await cache.put(url, res.clone());
             } else {

@@ -7,7 +7,7 @@ import L from "leaflet";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { parseGeometry, formatDuration, haversineKm, getRouteDeparture, getDeliveryStops, getRouteGeometry, serializeGeometry } from "@/lib/routing";
-import { tileUrlsForPoints, prefetchTiles, getCachedTileCount } from "@/lib/tileCache";
+import { tileUrlsForRoute, prefetchTiles, getCachedTileCount } from "@/lib/tileCache";
 import { saveDrivenPath, loadDrivenPath } from "@/lib/drivenPathStore";
 
 function totalDistanceKm(path) {
@@ -208,7 +208,7 @@ export default function DriverMap() {
       toast.error("Sem pontos para mapear ainda — aguarde o trajeto carregar");
       return;
     }
-    const urls = tileUrlsForPoints(points, { zoomMin: 11, zoomMax: 14, paddingDeg: 0.04, maxTiles: 3000 });
+    const urls = tileUrlsForRoute(points, { zoomMin: 12, zoomMax: 14, tileRadius: 1, maxTiles: 1500 });
     if (urls.length === 0) {
       toast.error("Não foi possível calcular tiles para baixar");
       return;
