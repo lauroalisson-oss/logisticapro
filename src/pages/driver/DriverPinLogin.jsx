@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Shield, Delete } from "lucide-react";
 
@@ -6,6 +6,37 @@ export default function DriverPinLogin({ onSuccess }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
+
+  // Link de acesso enviado pelo gestor: ?driver_pin=XXXXXX
+  // Stasha o PIN do link na sessionStorage caso a URL seja limpa no redirect
+  // de login, e tenta verificar automaticamente contra o driver_pin do usuário.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pinFromUrl = params.get("driver_pin");
+    if (pinFromUrl) {
+      sessionStorage.setItem("driver_pin_from_link", pinFromUrl);
+      window.history.replaceState({}, "", window.location.pathname + window.location.hash);
+    }
+    const cachedPin = sessionStorage.getItem("driver_pin_from_link");
+    if (!cachedPin) return;
+    setChecking(true);
+    let cancelled = false;
+    base44.auth.me()
+      .then((me) => {
+        if (cancelled) return;
+        if (me?.driver_pin === cachedPin) {
+          sessionStorage.setItem("driver_pin_verified", "1");
+          sessionStorage.removeItem("driver_pin_from_link");
+          onSuccess();
+        } else {
+          sessionStorage.removeItem("driver_pin_from_link");
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setChecking(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleDigit = (d) => {
     if (pin.length >= 6) return;

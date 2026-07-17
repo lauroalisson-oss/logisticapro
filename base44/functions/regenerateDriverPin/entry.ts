@@ -1,10 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-// Regenera o PIN de um motorista. Feito no servidor para que a escrita em
-// User (campo driver_pin de OUTRO usuário) não fique aberta no cliente —
-// só um membro da mesma empresa pode fazer, e apenas sobre motoristas
-// daquela empresa. Sem isso, travar a entidade User quebraria a gestão de
-// motoristas; deixá-la aberta manteria o furo de escrita cruzada.
+// Regenera o PIN de acesso do app de campo para um motorista. Feito no
+// servidor para que a escrita em User (campo driver_pin de OUTRO usuário)
+// não fique aberta no cliente — a atualização direta via SDK falha para
+// usuários não-admin de qualquer forma. Aqui usamos o service role e
+// validamos que o motorista-alvo pertence à mesma empresa do solicitante
+// (admin da plataforma passa direto), para não expor cross-tenant.
 
 function generatePin(): string {
   const max = 1_000_000;
@@ -18,30 +19,32 @@ function generatePin(): string {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    let user;
+    try { user = await base44.auth.me(); } catch { user = null; }
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    if (!user.company_id) return Response.json({ error: 'Usuário sem empresa vinculada.' }, { status: 403 });
 
-    const { driver_id } = await req.json().catch(() => ({}));
-    if (!driver_id) return Response.json({ error: 'driver_id required' }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const driverId = body?.driver_id;
+    if (!driverId) return Response.json({ error: 'driver_id required' }, { status: 400 });
 
     const sr = base44.asServiceRole;
-    const drivers = await sr.entities.User.filter({ id: driver_id });
-    const driver = drivers[0];
-    if (!driver) return Response.json({ error: 'Motorista não encontrado.' }, { status: 404 });
+    const target = await sr.entities.User.get(driverId);
+    if (!target) return Response.json({ error: 'Motorista não encontrado.' }, { status: 404 });
 
-    // Só motoristas da mesma empresa do solicitante.
-    if (driver.company_id !== user.company_id) {
+    // Mesma-empresa (admin da plataforma passa direto).
+    if (user.role !== 'admin' && target.company_id !== user.company_id) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
-    if (!driver.is_driver && !driver.driver_pin) {
-      return Response.json({ error: 'Usuário-alvo não é motorista.' }, { status: 400 });
+
+    // Pin chaves só pra quem é driver; se ainda não for, mantém a restrição.
+    if (!target.is_driver && !target.driver_pin) {
+      return Response.json({ error: 'Usuário não é motorista.' }, { status: 400 });
     }
 
-    const pin = generatePin();
-    await sr.entities.User.update(driver.id, { driver_pin: pin });
+    const newPin = generatePin();
+    await sr.entities.User.update(driverId, { driver_pin: newPin });
 
-    return Response.json({ ok: true, driver_pin: pin });
+    return Response.json({ ok: true, driver_pin: newPin });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
