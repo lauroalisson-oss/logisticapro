@@ -1,10 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-// Regenera o PIN de acesso do app de campo para um motorista.
-// A atualização direta via SDK na entidade User falha para usuários não-admin
-// (a plataforma só permite admins atualizarem outros usuários). Aqui usamos
-// o service role e validamos que o motorista-alvo pertence à mesma empresa do
-// solicitante, para não expor cross-tenant.
+// Regenera o PIN de acesso do app de campo para um motorista. Feito no
+// servidor para que a escrita em User (campo driver_pin de OUTRO usuário)
+// não fique aberta no cliente — a atualização direta via SDK falha para
+// usuários não-admin de qualquer forma. Aqui usamos o service role e
+// validamos que o motorista-alvo pertence à mesma empresa do solicitante
+// (admin da plataforma passa direto), para não expor cross-tenant.
 
 function generatePin(): string {
   const max = 1_000_000;

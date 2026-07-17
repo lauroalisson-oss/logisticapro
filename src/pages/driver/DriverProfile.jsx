@@ -24,7 +24,8 @@ export default function DriverProfile() {
 
   const handleSave = async () => {
     setSaving(true);
-    await base44.auth.updateMe({ phone });
+    // Salvo via backend (updateUserProfile) — só campos de perfil.
+    await base44.functions.invoke("updateUserProfile", { phone });
     setSaving(false);
   };
 
