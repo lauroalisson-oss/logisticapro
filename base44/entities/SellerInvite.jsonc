@@ -1,0 +1,40 @@
+{
+  "name": "SellerInvite",
+  "type": "object",
+  "properties": {
+    "email": {
+      "type": "string",
+      "title": "Email do Vendedor"
+    },
+    "full_name": {
+      "type": "string",
+      "title": "Nome Completo"
+    },
+    "phone": {
+      "type": "string",
+      "title": "Telefone"
+    },
+    "company_id": {
+      "type": "string",
+      "title": "Empresa"
+    },
+    "permissions": {
+      "type": "object",
+      "title": "Permissões de Acesso"
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "pending",
+        "activated"
+      ],
+      "default": "pending"
+    }
+  },
+  "required": [
+    "email",
+    "company_id",
+    "status"
+  ]
+}

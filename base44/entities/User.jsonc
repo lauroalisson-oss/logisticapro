@@ -23,6 +23,15 @@
       "type": "string",
       "title": "PIN do Motorista"
     },
+    "is_seller": {
+      "type": "boolean",
+      "title": "\u00c9 Vendedor",
+      "default": false
+    },
+    "permissions": {
+      "type": "object",
+      "title": "Permiss\u00f5es de Acesso (Vendedor)"
+    },
     "phone": {
       "type": "string",
       "title": "Telefone"

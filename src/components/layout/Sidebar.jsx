@@ -2,12 +2,13 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Package, ShoppingCart, Truck, Users,
   BoxSelect, Route, MapPin, BarChart3, Settings, LogOut, Menu, X, LineChart, Bell, Wrench,
-  Building2, Key, ShieldCheck
+  Building2, Key, ShieldCheck, UserCog
 } from "lucide-react";
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { isPlatformAdmin } from "@/lib/platformAdmin";
+import { hasPagePermission } from "@/lib/permissions";
 
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
@@ -15,6 +16,7 @@ const navItems = [
   { label: "Produtos", icon: Package, path: "/products" },
   { label: "Veículos", icon: Truck, path: "/vehicles" },
   { label: "Motoristas", icon: Users, path: "/drivers" },
+  { label: "Vendedores", icon: UserCog, path: "/sellers", gestorOnly: true },
   { label: "Cargas", icon: BoxSelect, path: "/loads" },
   { label: "Rotas", icon: Route, path: "/routes" },
   { label: "Rastreamento", icon: MapPin, path: "/tracking" },
@@ -35,7 +37,9 @@ export default function Sidebar() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const showAdmin = isPlatformAdmin(user);
-  const items = showAdmin ? adminNavItems : navItems;
+  const items = showAdmin
+    ? adminNavItems
+    : navItems.filter(item => item.gestorOnly ? !user?.is_seller : hasPagePermission(user, item.path.slice(1)));
 
   const handleLogout = () => {
     base44.auth.logout();

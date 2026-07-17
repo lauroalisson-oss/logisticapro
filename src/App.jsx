@@ -16,6 +16,7 @@ import AppLayout from './components/layout/AppLayout';
 import DriverLayout from './components/layout/DriverLayout';
 import RoleRouter from './pages/RoleRouter';
 import DriverActivation from './pages/DriverActivation';
+import SellerActivation from './pages/SellerActivation';
 import CompanySetup from './pages/CompanySetup';
 import CompanyAccessLock from './pages/CompanyAccessLock';
 import AdminCompanies from './pages/AdminCompanies';
@@ -25,6 +26,7 @@ import Orders from './pages/Orders';
 import Products from './pages/Products';
 import Vehicles from './pages/Vehicles';
 import Drivers from './pages/Drivers';
+import Sellers from './pages/Sellers';
 import Loads from './pages/Loads';
 import RoutesPage from './pages/Routes';
 import Tracking from './pages/Tracking';
@@ -37,25 +39,50 @@ import DriverRoute from './pages/driver/DriverRoute';
 import DriverStops from './pages/driver/DriverStops';
 import DriverMap from './pages/driver/DriverMap';
 import DriverProfile from './pages/driver/DriverProfile';
+import { RequirePermission, RequireGestor } from './components/shared/RequirePermission';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user, isAuthenticated } = useAuth();
   const { company, companyId, loading: companyLoading } = useCompany();
   const [pendingInvite, setPendingInvite] = useState(null); // null=unchecked, false=none, true=has invite
+  const [pendingSellerInvite, setPendingSellerInvite] = useState(false);
   const [inviteChecked, setInviteChecked] = useState(false);
 
-  // For users with no company and not yet a driver, check if there's a pending driver invite
+  // For users with no company and not yet a driver/seller, check if there's
+  // a pending driver invite first, then a pending seller invite.
   useEffect(() => {
-    const shouldCheck = isAuthenticated && user && !user.is_driver && !user.driver_pin && !companyLoading && !company;
+    const shouldCheck = isAuthenticated && user && !user.is_driver && !user.driver_pin && !user.is_seller && !companyLoading && !company;
     if (!shouldCheck) { setInviteChecked(true); return; }
-    base44.functions.invoke('getDriverInvite', {})
-      .then(res => { setPendingInvite(!!res.data?.invite); })
-      .catch(() => { setPendingInvite(false); })
-      .finally(() => setInviteChecked(true));
+    let cancelled = false;
+    (async () => {
+      try {
+        const driverRes = await base44.functions.invoke('getDriverInvite', {});
+        if (cancelled) return;
+        if (driverRes.data?.invite) {
+          setPendingInvite(true);
+          setInviteChecked(true);
+          return;
+        }
+      } catch {
+        // ignore — falls through to seller check
+      }
+      try {
+        const sellerRes = await base44.functions.invoke('getSellerInvite', {});
+        if (cancelled) return;
+        setPendingSellerInvite(!!sellerRes.data?.invite);
+      } catch {
+        if (!cancelled) setPendingSellerInvite(false);
+      }
+      if (!cancelled) {
+        setPendingInvite(false);
+        setInviteChecked(true);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [isAuthenticated, user, company, companyLoading]);
 
   // Show loading spinner while checking app public settings or auth
-  const needsInviteCheck = isAuthenticated && user && !user.is_driver && !user.driver_pin && !company && !companyLoading;
+  const needsInviteCheck = isAuthenticated && user && !user.is_driver && !user.driver_pin && !user.is_seller && !company && !companyLoading;
 
   if (isLoadingPublicSettings || isLoadingAuth || companyLoading || (needsInviteCheck && !inviteChecked)) {
     return (
@@ -116,6 +143,11 @@ const AuthenticatedApp = () => {
     return <DriverActivation user={user} onActivated={() => window.location.reload()} />;
   }
 
+  // Vendedor convidado faz 1º login: ainda não tem is_seller, mas tem invite pendente no banco.
+  if (isAuthenticated && !isDriver && !company && !pendingInvite && pendingSellerInvite) {
+    return <SellerActivation onActivated={() => window.location.reload()} />;
+  }
+
   // Usuário normal logado sem empresa — cadastro inicial.
   if (isAuthenticated && !company) {
     return <CompanySetup />;
@@ -133,18 +165,19 @@ const AuthenticatedApp = () => {
       {/* Admin/Dispatcher Layout */}
       <Route element={<AppLayout />}>
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/orders" element={<Orders />} />
-        <Route path="/products" element={<Products />} />
-        <Route path="/vehicles" element={<Vehicles />} />
-        <Route path="/drivers" element={<Drivers />} />
-        <Route path="/loads" element={<Loads />} />
-        <Route path="/routes" element={<RoutesPage />} />
-        <Route path="/tracking" element={<Tracking />} />
-        <Route path="/reports" element={<Reports />} />
-        <Route path="/analytics" element={<Analytics />} />
-        <Route path="/notifications" element={<Notifications />} />
-        <Route path="/maintenance" element={<MaintenancePage />} />
-        <Route path="/settings" element={<Settings />} />
+        <Route path="/orders" element={<RequirePermission perm="orders"><Orders /></RequirePermission>} />
+        <Route path="/products" element={<RequirePermission perm="products"><Products /></RequirePermission>} />
+        <Route path="/vehicles" element={<RequirePermission perm="vehicles"><Vehicles /></RequirePermission>} />
+        <Route path="/drivers" element={<RequirePermission perm="drivers"><Drivers /></RequirePermission>} />
+        <Route path="/sellers" element={<RequireGestor><Sellers /></RequireGestor>} />
+        <Route path="/loads" element={<RequirePermission perm="loads"><Loads /></RequirePermission>} />
+        <Route path="/routes" element={<RequirePermission perm="routes"><RoutesPage /></RequirePermission>} />
+        <Route path="/tracking" element={<RequirePermission perm="tracking"><Tracking /></RequirePermission>} />
+        <Route path="/reports" element={<RequirePermission perm="reports"><Reports /></RequirePermission>} />
+        <Route path="/analytics" element={<RequirePermission perm="analytics"><Analytics /></RequirePermission>} />
+        <Route path="/notifications" element={<RequirePermission perm="notifications"><Notifications /></RequirePermission>} />
+        <Route path="/maintenance" element={<RequirePermission perm="maintenance"><MaintenancePage /></RequirePermission>} />
+        <Route path="/settings" element={<RequirePermission perm="settings"><Settings /></RequirePermission>} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
